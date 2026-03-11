@@ -1,0 +1,9 @@
+---
+description: Never run Python files that use matplotlib interactive graphics (plt.show)
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# No running matplotlib scripts
+
+Never execute Python scripts that use `matplotlib` interactive graphics (e.g. `plt.show()`). These will hang in the terminal. Only edit the code and let the user run it themselves.
