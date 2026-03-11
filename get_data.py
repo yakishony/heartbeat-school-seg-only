@@ -6,20 +6,21 @@ import numpy as np
 import pandas as pd
 from scipy.io import wavfile
 
-LOCAL_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+from env import DATA_DIR
+from pathlib import Path
 
-
-def download_dataset(local_dir=LOCAL_DATA_DIR):
+def download_dataset(local_dir=DATA_DIR):
     """Download dataset from Kaggle, or reuse local copy if it exists."""
-    if os.path.isdir(local_dir) and any(f.endswith(".wav") for f in os.listdir(local_dir)):
+    local_dir = Path(local_dir)
+    if local_dir.is_dir() and any(local_dir.rglob("*.wav")):
         print(f"Using cached dataset at {local_dir}")
-        return local_dir
+        return str(local_dir)
 
     print("Downloading dataset from Kaggle...")
     src = kagglehub.dataset_download("bjoernjostein/the-circor-digiscope-phonocardiogram-dataset-v2")
     print(f"Copying to {local_dir} for future reuse...")
     shutil.copytree(src, local_dir, dirs_exist_ok=True)
-    return local_dir
+    return str(local_dir)
 
 
 def build_sample_labels(tsv_path, signal_length, sr):
