@@ -1,0 +1,18 @@
+{
+  "python.defaultInterpreterPath": "/Users/rkishony/miniconda3/envs/heartbeat-school/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "terminal.integrated.env.osx": {
+    "CONDA_DEFAULT_ENV": "heartbeat-school"
+  },
+  "terminal.integrated.profiles.osx": {
+    "bash (heartbeat-school)": {
+      "path": "bash",
+      "args": ["-l"],
+      "env": {
+        "CONDA_DEFAULT_ENV": "heartbeat-school"
+      }
+    }
+  },
+  "terminal.integrated.defaultProfile.osx": "bash (heartbeat-school)",
+  "terminal.integrated.shellIntegration.enabled": true
+}
