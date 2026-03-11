@@ -1,4 +1,5 @@
 import os
+import pickle
 import shutil
 
 import kagglehub
@@ -8,6 +9,9 @@ from scipy.io import wavfile
 
 from env import DATA_DIR
 from pathlib import Path
+
+DATASET_CACHE = Path(DATA_DIR) / "dataset.pickle"
+
 
 def download_dataset(local_dir=DATA_DIR):
     """Download dataset from Kaggle, or reuse local copy if it exists."""
@@ -45,7 +49,12 @@ def index_tsv_files(path):
     return tsv_files
 
 
-def load_dataset(path=None):
+def load_dataset(path=None, use_cache=True):
+    if use_cache and DATASET_CACHE.exists():
+        print(f"Loading cached dataset from {DATASET_CACHE}")
+        with open(DATASET_CACHE, "rb") as f:
+            return pickle.load(f)
+
     if path is None:
         path = download_dataset()
 
@@ -68,7 +77,13 @@ def load_dataset(path=None):
                 signal = signal[:, 0]
 
             y = build_sample_labels(tsv_files[rec_id], len(signal), sr)
-            dataset[rec_id] = {"signal": signal, "sr": sr, "y": y}
+            dataset[rec_id] = {"signal": signal, "sr": sr, "y": y, 'type': rec_id.split('_')[1]}
+
+    if use_cache:
+        DATASET_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Caching dataset to {DATASET_CACHE}")
+        with open(DATASET_CACHE, "wb") as f:
+            pickle.dump((dataset, missing_annotations), f)
 
     return dataset, missing_annotations
 

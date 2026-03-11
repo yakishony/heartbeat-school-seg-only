@@ -1,0 +1,50 @@
+# Updated colors and descriptive labels
+
+import numpy as np
+import matplotlib.pyplot as plt
+from env import FIGURES_DIR
+
+
+LABEL_COLORS = {
+    0: "gray",
+    1: "red",     # S1
+    2: "orange",  # systole
+    3: "blue",    # S2
+    4: "green"    # diastole
+}
+
+LABEL_NAMES = {
+    0: "unrecognized",
+    1: "S1",
+    2: "systole",
+    3: "S2",
+    4: "diastole"
+}
+
+
+def plot_signal_on_ax(ax, signal, y, sr, s=1, show_labels=True):
+    """Plot a color-coded signal on a given axes."""
+    t = np.arange(len(signal)) / sr
+    for label, color in LABEL_COLORS.items():
+        mask = y == label
+        ax.scatter(t[mask], signal[mask], s=s, c=color,
+                   label=LABEL_NAMES[label] if show_labels else None)
+
+
+def plot_recording(rec_id, dataset, xl=None, yl=None, sa_fig: bool = False):
+    data = dataset[rec_id]
+    fig, ax = plt.subplots(figsize=(14, 4))
+    plot_signal_on_ax(ax, data["signal"], data["y"], data["sr"])
+    if xl:
+        ax.set_xlim(xl)
+    if yl:
+        ax.set_ylim(yl)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.set_title(f"Recording {rec_id} — segmentation")
+    ax.legend(markerscale=6)
+    fig.tight_layout()
+    if sa_fig:
+        path = FIGURES_DIR / f"fig_{rec_id}.png"
+        fig.savefig(path, dpi=100)
+        print(f"Saved {path}")
