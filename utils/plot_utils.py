@@ -48,3 +48,31 @@ def plot_recording(rec_id, dataset, xl=None, yl=None, sa_fig: bool = False):
         path = FIGURES_DIR / f"fig_{rec_id}.png"
         fig.savefig(path, dpi=100)
         print(f"Saved {path}")
+
+
+def plot_recording_before_and_after(rec_id, dataset_before, dataset_after,
+                                    label="processing", xl=None):
+    """Plot a single recording before and after any processing step."""
+    sig_before = dataset_before[rec_id]['signal']
+    sig_after = dataset_after[rec_id]['signal']
+    sr = dataset_before[rec_id]['sr']
+    t_before = np.arange(len(sig_before)) / sr
+    t_after = np.arange(len(sig_after)) / sr
+
+    fig, ax = plt.subplots(figsize=(14, 4))
+
+    ax.plot(t_before, sig_before, '.-', color='steelblue', linewidth=0.4, label=f"Before {label}")
+    ax.plot(t_after, sig_after, '.-', color='tomato', linewidth=0.4, label=f"After {label}")
+    ax.set_ylabel("Amplitude")
+    ax.set_xlabel("Time (s)")
+    ax.set_title(f"Recording {rec_id} — {label}")
+    ax.legend()
+
+    if xl:
+        ax.set_xlim(xl)
+
+    fig.tight_layout()
+    path = FIGURES_DIR / f"fig_{label}_{rec_id}.png"
+    fig.savefig(path, dpi=150)
+    print(f"Saved {path}")
+    return fig

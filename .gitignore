@@ -1,3 +1,4 @@
 data_raw/
+data_for_ml/
 figures/
 *.pyc
