@@ -7,14 +7,15 @@ import tensorflow as tf
 import keras
 from keras import layers, Model
 from sklearn.model_selection import train_test_split
-
+from evaluate_model import plot_training_curves
 from env import DATA_FOR_ML, CLASSES
 from split_data_into_fixed_length_recordings import SAMPLES_NUM
 
 # ── Hyperparameters ──
 NUM_CLASSES = len(CLASSES)     # 0=background, 1=S1, 2=systolic, 3=S2, 4=diastolic
-BATCH_SIZE = 32
-EPOCHS = 20
+BATCH_SIZE = 64
+EPOCHS = 100
+EARLY_STOPPING_PATIENCE = 5
 LEARNING_RATE = 1e-3
 VAL_SPLIT = 0.2
 POOL_1 = 4           # 4000 → 1000
@@ -117,7 +118,11 @@ def main():
         ),
         keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6, verbose=1
-        ), # if the val - loss does not improve for 2 epochs, the learning rate will be reduced by half to take more careful steps
+        ),# if the val - loss does not improve for 2 epochs, the learning rate will be reduced by half to take more careful steps
+        keras.callbacks.EarlyStopping(
+            monitor="val_loss", patience=EARLY_STOPPING_PATIENCE,
+            restore_best_weights=True, verbose=1
+        ), # if the val - loss does not improve for 5 epochs, the training will be stopped
     ]
 
     history = model.fit(
@@ -126,6 +131,8 @@ def main():
         epochs=EPOCHS,
         callbacks=callbacks,
     )
+
+    plot_training_curves(history, save_path=f"figures/fig_training_curves_{run_name}.png")
 
 
 if __name__ == "__main__":
