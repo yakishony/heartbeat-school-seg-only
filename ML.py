@@ -61,25 +61,27 @@ def build_model(seq_len=SAMPLES_NUM, num_classes=NUM_CLASSES):
     # Encoder
     x = layers.Conv1D(64, 7, padding="same", activation="relu")(inp)
     x = layers.BatchNormalization()(x)
-    x = layers.MaxPool1D(pool_size=POOL_1)(x)                    # 8000 → 2000
+    x = layers.Dropout(0.1)(x)
+    x = layers.MaxPool1D(pool_size=POOL_1)(x)                    # 4000 → 1000
 
     x = layers.Conv1D(128, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
-    x = layers.MaxPool1D(pool_size=POOL_2)(x)    # 2000 → 500
-    x = layers.Dropout(0.2)(x)                    
+    x = layers.Dropout(0.2)(x)
+    x = layers.MaxPool1D(pool_size=POOL_2)(x)                    # 1000 → 250
 
     # BiGRU on reduced sequence
     x = layers.Bidirectional(
-        layers.GRU(128, return_sequences=True)
-    )(x)                                                          # (500, 256)
+        layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)
+    )(x)                                                          # (250, 256)
 
     # Decoder
-    x = layers.UpSampling1D(size=POOL_2)(x)                      # 500 → 2000
+    x = layers.UpSampling1D(size=POOL_2)(x)                      # 250 → 1000
     x = layers.Conv1D(64, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.2)(x)
 
-    x = layers.UpSampling1D(size=POOL_1)(x)                      # 2000 → 8000
-    x = layers.Conv1D(num_classes, 1, activation="softmax")(x)   # (8000, 5)
+    x = layers.UpSampling1D(size=POOL_1)(x)                      # 1000 → 4000
+    x = layers.Conv1D(num_classes, 1, activation="softmax")(x)   # (4000, 5)
 
     return Model(inputs=inp, outputs=x)
 
@@ -99,7 +101,7 @@ def main():
     model.summary()
 
     model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE),
+        optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0), # if the square-root of the sum of all gradients is greater than the clipnorm, it will be clipped to 1
         loss="sparse_categorical_crossentropy",
         metrics=["accuracy"],
     )
@@ -113,6 +115,9 @@ def main():
             filepath=str(checkpoint_dir / "epoch_{epoch:03d}.keras"),
             save_freq="epoch",
         ),
+        keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6, verbose=1
+        ), # if the val - loss does not improve for 2 epochs, the learning rate will be reduced by half to take more careful steps
     ]
 
     history = model.fit(
@@ -121,9 +126,6 @@ def main():
         epochs=EPOCHS,
         callbacks=callbacks,
     )
-
-    loss, acc = model.evaluate(val_ds)
-    print(f"\nVal loss: {loss:.4f}, Val accuracy: {acc:.4f}")
 
 
 if __name__ == "__main__":
