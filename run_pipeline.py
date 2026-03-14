@@ -2,6 +2,7 @@
 Orchestrate the full pipeline: load → normalize → bandpass → save .npy → tf.data.Dataset.
 """
 import gc
+import shutil
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,11 +10,14 @@ import numpy as np
 from env import DATA_FOR_ML
 from get_data import load_dataset
 from prepare_data import normalize_dataset, bandpass_filter_dataset
+from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings
 from utils.plot_utils import plot_recording_before_and_after
 
 
 def save_dataset_as_npy(dataset, out_dir=DATA_FOR_ML):
     """Save each recording's signal and labels as separate .npy files."""
+    if out_dir.exists():
+        shutil.rmtree(out_dir) # remove the directory if it exists
     signal_dir = out_dir / "signals"
     label_dir = out_dir / "labels"
     signal_dir.mkdir(parents=True, exist_ok=True)
@@ -32,22 +36,31 @@ def run():
     dataset_raw, missing = load_dataset()
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
 
-    # 2. Normalize
-    dataset_normalized, global_max = normalize_dataset(dataset_raw)
+    # 2. Split into fixed length recordings
+    # TODO - consider changing the order so that ill split after the rest of the prossesing
+    dataset_split, count_deleted_recordings, count_full_0_splits = split_data_into_fixed_length_recordings(dataset_raw)
     del dataset_raw
+    gc.collect()
+    print(f"Split into {len(dataset_split)} recordings")
+    print(f"Deleted {count_deleted_recordings} recordings")
+    print(f"Deleted {count_full_0_splits} splits")
+
+    # 3. Normalize
+    dataset_normalized, global_max = normalize_dataset(dataset_split)
+    del dataset_split
     gc.collect()
     print(f"Normalized (global_max={global_max:.4f})")
 
-    # 3. Bandpass filter
+    # 4. Bandpass filter
     dataset_bandpassed = bandpass_filter_dataset(dataset_normalized)
     del dataset_normalized
     gc.collect()
     print("Bandpass filtered")
 
-    # 4. Save processed dataset as .npy files
+    # 5. Save processed dataset as .npy files
     save_dataset_as_npy(dataset_bandpassed)
 
-    # 5. Free dataset from RAM
+    # 6. Free dataset from RAM
     del dataset_bandpassed
     gc.collect()
     print("Freed dataset from RAM")
