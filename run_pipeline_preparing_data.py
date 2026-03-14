@@ -7,9 +7,9 @@ import shutil
 import matplotlib.pyplot as plt
 import numpy as np
 
-from env import DATA_FOR_ML
+from env import DATA_FOR_ML, DOWNSAMPLE_FACTOR
 from get_data import load_dataset
-from prepare_data import normalize_dataset, bandpass_filter_dataset
+from prepare_data import normalize_dataset, bandpass_filter_dataset, downsample_dataset
 from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings
 from utils.plot_utils import plot_recording_before_and_after
 
@@ -37,7 +37,6 @@ def run():
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
 
     # 2. Split into fixed length recordings
-    # TODO - consider changing the order so that ill split after the rest of the prossesing
     dataset_split, count_deleted_recordings, count_full_0_splits = split_data_into_fixed_length_recordings(dataset_raw)
     del dataset_raw
     gc.collect()
@@ -57,11 +56,17 @@ def run():
     gc.collect()
     print("Bandpass filtered")
 
-    # 5. Save processed dataset as .npy files
-    save_dataset_as_npy(dataset_bandpassed)
-
-    # 6. Free dataset from RAM
+    # 5. Downsample (safe after bandpass — no aliasing)
+    dataset_downsampled = downsample_dataset(dataset_bandpassed, DOWNSAMPLE_FACTOR)
     del dataset_bandpassed
+    gc.collect()
+    print(f"Downsampled by {DOWNSAMPLE_FACTOR}x")
+
+    # 6. Save processed dataset as .npy files
+    save_dataset_as_npy(dataset_downsampled)
+
+    # 7. Free dataset from RAM
+    del dataset_downsampled
     gc.collect()
     print("Freed dataset from RAM")
 

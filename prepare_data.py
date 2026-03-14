@@ -56,3 +56,14 @@ def bandpass_filter_dataset(dataset):
         }
     return filtered
 
+
+def downsample_dataset(dataset, factor):
+    downsampled = {}
+    for rec_id, rec in dataset.items():
+        downsampled[rec_id] = {
+            **rec,
+            'signal': rec['signal'][::factor],
+            'y': rec['y'][::factor],
+        }
+    return downsampled
+

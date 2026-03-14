@@ -1,8 +1,9 @@
 from tracemalloc import start
-from env import RATE
+from env import RATE, RATE_DS
 
 LEN_REC = 2
-SAMPLES_NUM = int(LEN_REC * RATE)
+SPLIT_SAMPLES = int(LEN_REC * RATE)     # for splitting raw data
+SAMPLES_NUM = int(LEN_REC * RATE_DS)    # after downsampling, used by ML.py
 
 def split_data_into_fixed_length_recordings(dataset):
     split_dataset = {}
@@ -10,15 +11,15 @@ def split_data_into_fixed_length_recordings(dataset):
     count_deleted_recordings = 0
 
     for rec_id, rec in dataset.items():
-        num_iterations = len(rec['signal']) // SAMPLES_NUM
+        num_iterations = len(rec['signal']) // SPLIT_SAMPLES
 
         if num_iterations == 0:
             count_deleted_recordings += 1
             continue
 
         for i in range(num_iterations):
-            start_sample = i * SAMPLES_NUM
-            end_sample = start_sample + SAMPLES_NUM
+            start_sample = i * SPLIT_SAMPLES
+            end_sample = start_sample + SPLIT_SAMPLES
 
             y = rec['y'][start_sample:end_sample]
             if all(val == 0 for val in y):

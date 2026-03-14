@@ -1,6 +1,6 @@
 """
 Conv1D-BiGRU encoder-decoder for PCG segmentation.
-Architecture: Conv1D+MaxPool (8000→500) → BiGRU → Upsample+Conv1D (500→8000)
+Architecture: Conv1D+MaxPool (4000→250) → BiGRU → Upsample+Conv1D (250→4000)
 """
 import numpy as np
 import tensorflow as tf
@@ -17,8 +17,8 @@ BATCH_SIZE = 32
 EPOCHS = 20
 LEARNING_RATE = 1e-3
 VAL_SPLIT = 0.2
-POOL_1 = 4           # 8000 → 2000
-POOL_2 = 4           # 2000 → 500
+POOL_1 = 4           # 4000 → 1000
+POOL_2 = 4           # 1000 → 250
 
 
 # ── Data loading ──
