@@ -1,6 +1,6 @@
 """
 Conv1D-BiGRU encoder-decoder for PCG segmentation.
-Architecture: Conv1D+MaxPool (4000→250) → BiGRU → Upsample+Conv1D (250→4000)
+Architecture: Conv1D+MaxPool (2000→125) → BiGRU → Upsample+Conv1D (125→2000)
 """
 import numpy as np
 import tensorflow as tf
@@ -18,8 +18,8 @@ EPOCHS = 100
 EARLY_STOPPING_PATIENCE = 5
 LEARNING_RATE = 1e-3
 VAL_SPLIT = 0.2
-POOL_1 = 4           # 4000 → 1000
-POOL_2 = 4           # 1000 → 250
+POOL_1 = 4           # 2000 → 500
+POOL_2 = 4           # 500 → 125
 
 
 # ── Data loading ──
@@ -63,26 +63,26 @@ def build_model(seq_len=SAMPLES_NUM, num_classes=NUM_CLASSES):
     x = layers.Conv1D(64, 7, padding="same", activation="relu")(inp)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.1)(x)
-    x = layers.MaxPool1D(pool_size=POOL_1)(x)                    # 4000 → 1000
+    x = layers.MaxPool1D(pool_size=POOL_1)(x)                    # 2000 → 500
 
     x = layers.Conv1D(128, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
-    x = layers.MaxPool1D(pool_size=POOL_2)(x)                    # 1000 → 250
+    x = layers.MaxPool1D(pool_size=POOL_2)(x)                    # 500 → 125
 
     # BiGRU on reduced sequence
     x = layers.Bidirectional(
         layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)
-    )(x)                                                          # (250, 256)
+    )(x)                                                          # (125, 256)
 
     # Decoder
-    x = layers.UpSampling1D(size=POOL_2)(x)                      # 250 → 1000
+    x = layers.UpSampling1D(size=POOL_2)(x)                      # 125 → 500
     x = layers.Conv1D(64, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
 
-    x = layers.UpSampling1D(size=POOL_1)(x)                      # 1000 → 4000
-    x = layers.Conv1D(num_classes, 1, activation="softmax")(x)   # (4000, 5)
+    x = layers.UpSampling1D(size=POOL_1)(x)                      # 500 → 2000
+    x = layers.Conv1D(num_classes, 1, activation="softmax")(x)   # (2000, 5)
 
     return Model(inputs=inp, outputs=x)
 
