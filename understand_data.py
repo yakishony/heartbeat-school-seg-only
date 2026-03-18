@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from get_data import load_dataset
-from env import FIGURES_DIR, RATE, TYPES
+from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES
 from utils.plot_utils import plot_recording
 from utils.data_utils import dataset_to_summary_df
 
@@ -46,6 +46,18 @@ def plot_pie(df):
     plt.title("Distribution of Recording TYPES")
     plt.savefig(FIGURES_DIR / "fig_pie.png", dpi=100)
     print(f"Saved {FIGURES_DIR / 'fig_pie.png'}")
+
+
+def plot_category_pie(dataset):
+    counts = np.zeros(len(CLASSES), dtype=np.int64)
+    for rec in dataset.values():
+        for c in CLASSES:
+            counts[c] += np.sum(rec['y'] == c)
+    plt.figure(figsize=(8, 8))
+    plt.pie(counts, labels=CATEGORY_NAMES, autopct='%1.1f%%', startangle=140)
+    plt.title("Distribution of Time Samples by Category")
+    plt.savefig(FIGURES_DIR / "fig_category_pie.png", dpi=100)
+    print(f"Saved {FIGURES_DIR / 'fig_category_pie.png'}")
 
 
 def plot_global_vs_good_max(dataset):
@@ -110,6 +122,7 @@ if __name__ == "__main__":
     df = build_summary(dataset)
     plot_stacked_histogram_by_type(df)
     plot_pie(df)
+    plot_category_pie(dataset)
     plot_global_vs_good_max(dataset)
     plot_example(dataset, df)
     plt.show()
