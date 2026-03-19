@@ -90,10 +90,14 @@ def build_model(seq_len=SAMPLES_NUM, num_classes=NUM_CLASSES):
 # ── Train ──
 def main():
     all_ids = load_all_ids()
-    train_ids, val_ids = train_test_split(
-        all_ids, test_size=VAL_SPLIT, random_state=42
+    # Split into train (70%), val (15%), test (15%)
+    train_ids, temp_ids = train_test_split(
+        all_ids, test_size=0.30, random_state=42
     )
-    print(f"Train: {len(train_ids)}, Val: {len(val_ids)}")
+    val_ids, test_ids = train_test_split(
+        temp_ids, test_size=0.5, random_state=42
+    )
+    print(f"Train: {len(train_ids)}, Val: {len(val_ids)}, Test: {len(test_ids)}")
 
     train_ds = make_tf_dataset(train_ids, BATCH_SIZE, shuffle=True)
     val_ds = make_tf_dataset(val_ids, BATCH_SIZE, shuffle=False)
@@ -133,6 +137,11 @@ def main():
     )
 
     plot_training_curves(history, save_path=f"figures/fig_training_curves_{run_name}.png")
+
+    test_signals = np.stack([np.load(DATA_FOR_ML / "signals" / f"{rid}.npy").reshape(-1, 1) for rid in test_ids])
+    test_labels = np.stack([np.load(DATA_FOR_ML / "labels" / f"{rid}.npy") for rid in test_ids])
+    test_loss, test_accuracy = model.evaluate(test_signals, test_labels)
+    print(f"Test loss: {test_loss:.4f}, Test accuracy: {test_accuracy:.4f}")
 
 
 if __name__ == "__main__":
