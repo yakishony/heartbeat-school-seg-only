@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from get_data import load_dataset
-from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES
+from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES, DATA_FOR_ML
 from utils.plot_utils import plot_recording
 from utils.data_utils import dataset_to_summary_df
 
@@ -110,19 +110,56 @@ def plot_global_vs_good_max(dataset):
     print(f"Saved {FIGURES_DIR / 'fig_global_vs_good_max.png'}")
 
 
+def plot_unrecognized_by_timestamp():
+    """For each timestamp, plot the % of recordings labeled 'unrecognized' (class 0)."""
+    
+    label_dir = DATA_FOR_ML / "labels"
+    label_files = sorted(label_dir.glob("*.npy"))
+
+    labels = np.stack([np.load(f) for f in label_files])  # (n_recordings, n_timestamps)
+    pct_unrecognized = np.mean(labels == 0, axis=0) * 100  # % per timestamp
+
+    plt.figure(figsize=(14, 5))
+    plt.bar(np.arange(len(pct_unrecognized)), pct_unrecognized, width=1.0, edgecolor='none')
+    plt.xlabel("Timestamp (sample index)")
+    plt.ylabel("% recordings labeled unrecognized")
+    plt.title("Percentage of Recordings with Unrecognized Label per Timestamp")
+    plt.tight_layout()
+    plt.savefig(FIGURES_DIR / "fig_unrecognized_by_timestamp.png", dpi=100)
+    plt.show()
+    print(f"Saved {FIGURES_DIR / 'fig_unrecognized_by_timestamp.png'}")
+
+
+def print_tail_middele_and_head_unrecognized_precentage_from_recordings():
+    """Print the percentage of unrecognized labels at the tail, middle, and head of each recording."""
+    label_dir = DATA_FOR_ML / "labels"
+    label_files = sorted(label_dir.glob("*.npy"))
+    recordings_labels = np.stack([np.load(f) for f in label_files])  # (n_recordings, n_timestamps)
+    counts = np.zeros(3)
+
+    for rec in recordings_labels:
+        counts[0] += rec[0] == 0
+        counts[2] += rec[-1] == 0
+
+        # Check if anywhere in the recording, it went from non-0 to 0 (excluding the first timestamp)
+        for i in range(1, len(rec)):
+            if rec[i-1] != 0 and rec[i] == 0:
+                for j in range(i, len(rec)):
+                    if rec[j] != 0:
+                        counts[1] += 1
+                        break
+                break
+
+    counts = counts / len(recordings_labels) * 100
+    print(f"Count of head unrecognized: {counts[0]}%")
+    print(f"Count of middle unrecognized: {counts[1]}%")
+    print(f"Count of tail unrecognized: {counts[2]}%")
+
 def plot_example(dataset, df):
     example_id = df['rec_id'].iloc[2]
     plot_recording(example_id, dataset, [4.3, 4.5], [-3000, 3000])
 
 
 if __name__ == "__main__":
-    dataset, missing = load_dataset()
-    print(f"Loaded {len(dataset)} recordings ({len(missing)} missing annotations)")
-
-    df = build_summary(dataset)
-    plot_stacked_histogram_by_type(df)
-    plot_pie(df)
-    plot_category_pie(dataset)
-    plot_global_vs_good_max(dataset)
-    plot_example(dataset, df)
-    plt.show()
+    print_tail_middele_and_head_unrecognized_precentage_from_recordings()
+    # plot_unrecognized_by_timestamp()
