@@ -11,7 +11,7 @@ LOWCUT = 61.0
 HIGHCUT = 160.0
 
 
-def find_max_of_all_recordings(dataset):
+def find_max_of_all_recordings_for_normalization(dataset):
     max_values = []
     for rec in dataset.values():
         max_values.append(np.max(np.abs(rec['signal'])))
@@ -34,7 +34,7 @@ def bandpass_filter(data, lowcut=LOWCUT, highcut=HIGHCUT, fs=RATE, order=5):
 
 def normalize_dataset(dataset):
     if NORMALIZE_TO_GLOBAL_MAX:
-        global_max = find_max_of_all_recordings(dataset)
+        global_max = find_max_of_all_recordings_for_normalization(dataset)
     else:
         global_max = None
     normalized = {}
