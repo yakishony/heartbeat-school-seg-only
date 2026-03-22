@@ -1,7 +1,9 @@
 """
 Conv1D-BiGRU encoder-decoder for PCG segmentation.
-Architecture: Conv1D+MaxPool (2000→125) → BiGRU → Upsample+Conv1D (125→2000)
+Architecture: Conv1D+MaxPool (2000→125) → BiGRU → Upsample+Conv1D (125→2000) with skip connections
 """
+import argparse
+from pathlib import Path
 import numpy as np
 import tensorflow as tf
 import keras
@@ -63,32 +65,36 @@ def build_model(seq_len=SAMPLES_NUM, num_classes=NUM_CLASSES):
     x = layers.Conv1D(64, 7, padding="same", activation="relu")(inp)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.1)(x)
-    x = layers.MaxPool1D(pool_size=POOL_1)(x)                    # 2000 → 500
+    x = layers.MaxPool1D(pool_size=POOL_1)(x)
+    skip1 = x
 
     x = layers.Conv1D(128, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
-    x = layers.MaxPool1D(pool_size=POOL_2)(x)                    # 500 → 125
+    x = layers.MaxPool1D(pool_size=POOL_2)(x)
+    skip2 = x
 
-    # BiGRU on reduced sequence
+    # BiGRU
     x = layers.Bidirectional(
         layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)
-    )(x)                                                          # (125, 256)
+    )(x)
 
     # Decoder
-    x = layers.UpSampling1D(size=POOL_2)(x)                      # 125 → 500
+    x = layers.Concatenate()([x, skip2])
+    x = layers.UpSampling1D(size=POOL_2)(x)
     x = layers.Conv1D(64, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
 
-    x = layers.UpSampling1D(size=POOL_1)(x)                      # 500 → 2000
-    x = layers.Conv1D(num_classes, 1, activation="softmax")(x)   # (2000, 5)
+    x = layers.Concatenate()([x, skip1])
+    x = layers.UpSampling1D(size=POOL_1)(x)
+    x = layers.Conv1D(num_classes, 1, activation="softmax")(x)
 
     return Model(inputs=inp, outputs=x)
 
 
 # ── Train ──
-def main():
+def main(resume_checkpoint: str | None = None):
     all_ids = load_all_ids()
     # Split into train (70%), val (15%), test (15%)
     train_ids, temp_ids = train_test_split(
@@ -102,19 +108,26 @@ def main():
     train_ds = make_tf_dataset(train_ids, BATCH_SIZE, shuffle=True)
     val_ds = make_tf_dataset(val_ids, BATCH_SIZE, shuffle=False)
 
-    model = build_model()
+    initial_epoch = 0
+    if resume_checkpoint:
+        print(f"Resuming from: {resume_checkpoint}")
+        model = keras.models.load_model(resume_checkpoint)
+        initial_epoch = int(Path(resume_checkpoint).stem.split("_")[-1])
+        run_name = Path(resume_checkpoint).parent.name
+    else:
+        model = build_model()
+        model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0),
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
+        )
+        run_name = input("Enter a name for this training run: ").strip()
+
     model.summary()
 
-    model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0), # if the square-root of the sum of all gradients is greater than the clipnorm, it will be clipped to 1
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-
-    run_name = input("Enter a name for this training run: ").strip()
     checkpoint_dir = DATA_FOR_ML.parent / "checkpoints" / run_name
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Checkpoints will be saved to: {checkpoint_dir}")
+    print(f"Checkpoints → {checkpoint_dir} (resuming from epoch {initial_epoch})")
     callbacks = [
         keras.callbacks.ModelCheckpoint(
             filepath=str(checkpoint_dir / "epoch_{epoch:03d}.keras"),
@@ -122,17 +135,18 @@ def main():
         ),
         keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6, verbose=1
-        ),# if the val - loss does not improve for 2 epochs, the learning rate will be reduced by half to take more careful steps
+        ),
         keras.callbacks.EarlyStopping(
             monitor="val_loss", patience=EARLY_STOPPING_PATIENCE,
             restore_best_weights=True, verbose=1
-        ), # if the val - loss does not improve for 5 epochs, the training will be stopped
+        ),
     ]
 
     history = model.fit(
         train_ds,
         validation_data=val_ds,
         epochs=EPOCHS,
+        initial_epoch=initial_epoch,
         callbacks=callbacks,
     )
 
@@ -145,4 +159,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint to resume from")
+    args = parser.parse_args()
+    main(resume_checkpoint=args.resume)
