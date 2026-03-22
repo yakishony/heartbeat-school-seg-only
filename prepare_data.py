@@ -18,18 +18,18 @@ def find_max_of_all_recordings_for_normalization(dataset):
     return np.max(max_values)
 
 
-def normalize_signal(data, global_max = None):
+def normalize_signal(signal, global_max = None):
     if global_max is None:
-        max_value = np.max(np.abs(data))
+        max_value = np.max(np.abs(signal))
     else:
         max_value = global_max
-    return data / max_value
+    return signal / max_value
 
 
-def bandpass_filter(data, lowcut=LOWCUT, highcut=HIGHCUT, fs=RATE, order=5):
+def bandpass_filter(signal, lowcut=LOWCUT, highcut=HIGHCUT, fs=RATE, order=5):
     nyq = 0.5 * fs
     b, a = butter(order, [lowcut / nyq, highcut / nyq], btype='band')
-    return filtfilt(b, a, data)
+    return filtfilt(b, a, signal)
 
 
 def normalize_dataset(dataset):
@@ -56,14 +56,17 @@ def bandpass_filter_dataset(dataset):
         }
     return filtered
 
+def downsample_signal(signal, factor):
+    return signal[::factor]
+
 
 def downsample_dataset(dataset, factor):
     downsampled = {}
     for rec_id, rec in dataset.items():
         downsampled[rec_id] = {
             **rec,
-            'signal': rec['signal'][::factor],
-            'y': rec['y'][::factor],
+            'signal': downsample_signal(rec['signal'], factor),
+            'y': downsample_signal(rec['y'], factor),
         }
     return downsampled
 
