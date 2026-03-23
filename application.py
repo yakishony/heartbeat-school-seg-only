@@ -4,14 +4,12 @@ Upload a WAV file → bandpass filter → normalize → downsample → model pre
 """
 import numpy as np
 import gradio as gr
-import matplotlib.pyplot as plt
 import keras
 
 from scipy.io import wavfile
-from socket import if_indextoname
 
 from prepare_data import bandpass_filter, normalize_signal, downsample_signal
-from utils.plot_utils import plot_signal_on_ax
+from utils.plot_utils import plot_segmented_signal_interactive
 from env import RATE, DOWNSAMPLE_FACTOR, RATE_DS
 from split_data_into_fixed_length_recordings import SAMPLES_NUM, LEN_REC
 
@@ -84,23 +82,23 @@ def from_wav_to_predicted_signal_plot(audio_path):
             full_predicted_signal[overlap_samples_index_in_signal[1]:] = y_pred[overlap_end:]
     
     
-    # plot the signal:
-    fig, ax = plt.subplots(figsize=(16, 4))
-    plot_signal_on_ax(ax, signal, full_predicted_signal, sr)
-    return fig
+    return plot_segmented_signal_interactive(signal, full_predicted_signal, sr)
 
 
-
-demo = gr.Interface(
-    fn=from_wav_to_predicted_signal_plot,
-    inputs=gr.Audio(type="filepath", label="Upload PCG (.wav)"),
-    outputs=gr.Plot(label="Segmentation Result"),
-    title="Heartbeat PCG Segmentation",
-    description=(
-        "Upload a heart sound WAV recording (sample rate: 4000 or 1000 Hz, at least 2s long). "
-        "The model segments it into S1, systole, S2, and diastole."
-    ),
-)
+with gr.Blocks(title="Heartbeat PCG Segmentation") as demo:
+    gr.Markdown("# Heartbeat PCG Segmentation")
+    gr.Markdown(
+        "Upload a heart sound WAV recording (4 000 or 1 000 Hz, ≥ 2 s). "
+        "The model segments it into **S1**, **systole**, **S2**, and **diastole**.  \n"
+        "Use the **scroll wheel to zoom** and **drag to pan** on the plot."
+    )
+    with gr.Row():
+        with gr.Column(scale=1):
+            audio_in = gr.Audio(type="filepath", label="Upload PCG (.wav)")
+            btn = gr.Button("Segment", variant="primary")
+        with gr.Column(scale=3):
+            plot_out = gr.Plot(label="Segmentation Result")
+    btn.click(fn=from_wav_to_predicted_signal_plot, inputs=audio_in, outputs=plot_out)
 
 if __name__ == "__main__":
     demo.launch()
