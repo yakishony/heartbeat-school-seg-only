@@ -2,6 +2,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from env import FIGURES_DIR
 
 
@@ -20,6 +21,29 @@ LABEL_NAMES = {
     3: "S2",
     4: "diastole"
 }
+
+
+def plot_segmented_signal_interactive(signal, y, sr, height=450, width=1100):
+    """Return an interactive Plotly figure with color-coded segmentation."""
+    t = np.arange(len(signal)) / sr
+    fig = go.Figure()
+    for label, color in LABEL_COLORS.items():
+        mask = y == label
+        if not mask.any():
+            continue
+        fig.add_trace(go.Scattergl(
+            x=t[mask], y=signal[mask],
+            mode="markers", marker=dict(size=2, color=color),
+            name=LABEL_NAMES[label],
+        ))
+    fig.update_layout(
+        height=height, width=width,
+        xaxis_title="Time (s)", yaxis_title="Amplitude",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(l=50, r=20, t=40, b=40),
+        dragmode="zoom",
+    )
+    return fig
 
 
 def plot_signal_on_ax(ax, signal, y, sr, s=1, show_labels=True):
