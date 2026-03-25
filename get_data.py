@@ -7,16 +7,15 @@ import numpy as np
 import pandas as pd
 from scipy.io import wavfile
 
-from env import DATA_DIR
+from env import DATA_DOWNLOADED, NUMERIC_CATEGORIZED_MURMUR, RAW_DATA_DIR
 from pathlib import Path
 
-DATASET_CACHE = Path(DATA_DIR) / "dataset.pickle"
 
 
-def download_dataset(local_dir=DATA_DIR):
+def download_dataset(local_dir=DATA_DOWNLOADED):
     """Download dataset from Kaggle, or reuse local copy if it exists."""
     local_dir = Path(local_dir)
-    if local_dir.is_dir() and any(local_dir.rglob("*.wav")):
+    if local_dir.is_dir() and any(local_dir.rglob("*.wav")): # to prevent downloading the dataset again if it already exists
         print(f"Using cached dataset at {local_dir}")
         return str(local_dir)
 
@@ -25,7 +24,6 @@ def download_dataset(local_dir=DATA_DIR):
     print(f"Copying to {local_dir} for future reuse...")
     shutil.copytree(src, local_dir, dirs_exist_ok=True)
     return str(local_dir)
-
 
 def build_sample_labels(tsv_path, signal_length, sr):
     """Convert interval annotations to per-sample labels."""
@@ -49,20 +47,40 @@ def index_tsv_files(path):
     return tsv_files
 
 
-def load_dataset(path=None, use_cache=True):
-    if use_cache and DATASET_CACHE.exists():
-        print(f"Loading cached dataset from {DATASET_CACHE}")
-        with open(DATASET_CACHE, "rb") as f:
+def build_murmur_map(txt_dir=None):
+    """Parse patient .txt files and return {patient_id: murmur} dict."""
+    if txt_dir is None:
+        txt_dir = DATA_DOWNLOADED
+    txt_dir = Path(txt_dir)
+    murmur_map = {}
+    for txt_file in txt_dir.glob("*.txt"):
+        patient_id = txt_file.stem
+        for line in txt_file.read_text().splitlines():
+            if line.startswith("#Murmur:"):
+                murmur_map[patient_id] = NUMERIC_CATEGORIZED_MURMUR[line.split(":")[1].strip()]
+                break
+    print(f"Loaded murmur labels for {len(murmur_map)} patients")
+    return murmur_map
+
+
+def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the missing annotations? 
+    """ returns pickle file with dataset as dict(rec_id: {'signal': signal, 'sr': sr, 'y': y, 'type': type, 'murmur': murmur}) 
+    and missing annotations as list(rec_id) """
+
+    if use_cache and RAW_DATA_DIR.exists():
+        print(f"Loading cached dataset from {RAW_DATA_DIR}")
+        with open(RAW_DATA_DIR, "rb") as f:
             return pickle.load(f)
 
-    if path is None:
-        path = download_dataset()
+    if path_to_load_data_from is None:
+        path_to_load_data_from = download_dataset()
 
-    tsv_files = index_tsv_files(path)
+    tsv_files = index_tsv_files(path_to_load_data_from)
+    murmur_map = build_murmur_map()
     dataset = {}
     missing_annotations = []
 
-    for root, _, files in os.walk(path):
+    for root, _, files in os.walk(path_to_load_data_from):
         for f in files:
             if not f.endswith(".wav"):
                 continue
@@ -72,20 +90,24 @@ def load_dataset(path=None, use_cache=True):
                 missing_annotations.append(rec_id)
                 continue
 
+            patient_id = rec_id.split("_")[0]
+            murmur = murmur_map[patient_id]
+
             sr, signal = wavfile.read(os.path.join(root, f))
             if signal.ndim > 1:
                 signal = signal[:, 0]
 
             y = build_sample_labels(tsv_files[rec_id], len(signal), sr)
-            dataset[rec_id] = {"signal": signal, "sr": sr, "y": y, 'type': rec_id.split('_')[1]}
+            dataset[rec_id] = {"signal": signal, "sr": sr, "y": y, 'type': rec_id.split('_')[1], 'murmur': murmur}
 
     if use_cache:
-        DATASET_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Caching dataset to {DATASET_CACHE}")
-        with open(DATASET_CACHE, "wb") as f:
+        print(f"Caching dataset to {RAW_DATA_DIR}")
+        with open(RAW_DATA_DIR, "wb") as f:
             pickle.dump((dataset, missing_annotations), f)
 
     return dataset, missing_annotations
+
+
 
 
 if __name__ == "__main__":

@@ -10,8 +10,8 @@ from env import DATA_FOR_ML
 BATCH_SIZE = 32
 
 
-def list_recording_ids(data_dir=DATA_FOR_ML):
-    signal_dir = data_dir / "signals"
+def list_recording_ids(RAW_DATA_DIR=DATA_FOR_ML):
+    signal_dir = RAW_DATA_DIR / "signals"
     return sorted(p.stem for p in signal_dir.glob("*.npy"))
 
 
