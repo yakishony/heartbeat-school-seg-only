@@ -1,11 +1,19 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from get_data import load_dataset
 from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES, DATA_FOR_ML
+from get_data import load_dataset
 from utils.plot_utils import plot_recording
 from utils.data_utils import dataset_to_summary_df
 
+def plot_pie_chart_of_murmur_distribution():
+    dataset, _ = load_dataset()
+    murmur_distribution = pd.Series([rec['murmur'] for rec in dataset.values()]).value_counts()
+    plt.figure(figsize=(8, 8))
+    plt.pie(murmur_distribution.values, labels=murmur_distribution.index, autopct='%1.1f%%', startangle=140)
+    plt.title("Distribution of Murmur")
+    plt.savefig(FIGURES_DIR / "fig_murmur_pie.png", dpi=100)
+    print(f"Saved {FIGURES_DIR / 'fig_murmur_pie.png'}")
 
 def build_summary(dataset):
     df = dataset_to_summary_df(dataset)
@@ -161,5 +169,6 @@ def plot_example(dataset, df):
 
 
 if __name__ == "__main__":
-    print_tail_middele_and_head_unrecognized_precentage_from_recordings()
+    # print_tail_middele_and_head_unrecognized_precentage_from_recordings()
     # plot_unrecognized_by_timestamp()
+    plot_pie_chart_of_murmur_distribution()
