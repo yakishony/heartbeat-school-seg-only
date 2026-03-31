@@ -7,8 +7,8 @@ from env import RATE
 
 
 NORMALIZE_TO_GLOBAL_MAX = True
-LOWCUT = 61.0
-HIGHCUT = 160.0
+BANDPASS_LOWCUT = 60.0
+BANDPASS_HIGHCUT = 150.0
 
 
 def find_max_of_all_recordings_for_normalization(dataset):
@@ -26,9 +26,9 @@ def normalize_signal(signal, global_max = None):
     return signal / max_value
 
 
-def bandpass_filter(signal, lowcut=LOWCUT, highcut=HIGHCUT, fs=RATE, order=5):
+def bandpass_filter(signal, BANDPASS_LOWCUT=BANDPASS_LOWCUT, BANDPASS_HIGHCUT=BANDPASS_HIGHCUT, fs=RATE, order=4):
     nyq = 0.5 * fs
-    b, a = butter(order, [lowcut / nyq, highcut / nyq], btype='band')
+    b, a = butter(order, [BANDPASS_LOWCUT / nyq, BANDPASS_HIGHCUT / nyq], btype='band')
     return filtfilt(b, a, signal)
 
 
