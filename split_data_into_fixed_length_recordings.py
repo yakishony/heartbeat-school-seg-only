@@ -30,6 +30,10 @@ def split_data_into_fixed_length_recordings(dataset):
                 'signal': rec['signal'][start_sample:end_sample],
                 'y': y,
                 'type': rec['type'],
+                'murmur': rec['murmur'],
             }
+    print("Split dataset length:", len(split_dataset))
+    print("Count deleted recordings:", count_deleted_recordings)
+    print("Count full 0 splits:", count_full_0_splits)
     return split_dataset, count_deleted_recordings, count_full_0_splits
             
