@@ -58,7 +58,7 @@ def plot_pie(df):
     print(f"Saved {FIGURES_DIR / 'fig_pie.png'}")
 
 
-def plot_category_pie(dataset):
+def plot_category_pie(dataset, name="fig_category_pie"):
     counts = np.zeros(len(CLASSES), dtype=np.int64)
     for rec in dataset.values():
         for c in CLASSES:
@@ -66,8 +66,9 @@ def plot_category_pie(dataset):
     plt.figure(figsize=(8, 8))
     plt.pie(counts, labels=CATEGORY_NAMES, autopct='%1.1f%%', startangle=140)
     plt.title("Distribution of Time Samples by Category")
-    plt.savefig(FIGURES_DIR / "fig_category_pie.png", dpi=100)
-    print(f"Saved {FIGURES_DIR / 'fig_category_pie.png'}")
+    plt.savefig(FIGURES_DIR / (name + ".png"), dpi=100)
+    plt.show()
+    print(f"Saved {FIGURES_DIR / (name + '.png')}")
 
 
 def plot_global_vs_good_max(dataset):
@@ -205,4 +206,4 @@ if __name__ == "__main__":
     # print_tail_middele_and_head_unrecognized_precentage_from_recordings()
     # plot_unrecognized_by_timestamp()
     # plot_pie_chart_of_murmur_distribution()
-    # plot_fft()
+    plot_fft()

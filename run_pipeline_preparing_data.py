@@ -10,7 +10,7 @@ import numpy as np
 from env import DATA_FOR_ML, DOWNSAMPLE_FACTOR
 from get_data import load_dataset
 from prepare_data import normalize_dataset, bandpass_filter_dataset, downsample_dataset
-from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings
+from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings, split_data_into_fixed_length_recordings_without_unrecognized
 from understand_data import plot_fft
 from utils.plot_utils import plot_recording_before_and_after
 
@@ -38,9 +38,9 @@ def run():
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
 
     # 2. Split into fixed length recordings
-    dataset_split = split_data_into_fixed_length_recordings(dataset_raw)
-    # del dataset_raw
-    # gc.collect()
+    dataset_split = split_data_into_fixed_length_recordings_without_unrecognized(dataset_raw)
+    del dataset_raw
+    gc.collect()
 
     # 3. Normalize
     dataset_normalized, global_max = normalize_dataset(dataset_split)

@@ -2,6 +2,7 @@ import gc
 from tracemalloc import start
 from env import RATE, RATE_DS
 from get_data import load_dataset
+from understand_data import plot_category_pie
 
 LEN_REC = 2
 SPLIT_SAMPLES = int(LEN_REC * RATE)     # for splitting raw data
@@ -72,6 +73,7 @@ def split_data_into_fixed_length_recordings_without_unrecognized(dataset):
             c_label = rec['y'][c_sample_index]
 
             if unreconized_count > SPLIT_SAMPLES/2:
+                continue
             split_dataset[rec_id + f"_{i}"] = {
                 'signal': rec['signal'][start_sample_index:end_sample_index],
                 'y': rec['y'][start_sample_index:end_sample_index],
@@ -98,6 +100,8 @@ def run():
     dataset_split = split_data_into_fixed_length_recordings(dataset_raw)
     del dataset_raw
     gc.collect()
+    plot_category_pie(dataset_split_without_unreconized, name="fig_category_pie_with_spliting_method_of_less_unrecognized_samples")
+    plot_category_pie(dataset_split, name="fig_category_pie_with_regular_spliting_method")
   
 
 if __name__ == "__main__":
