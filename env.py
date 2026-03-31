@@ -2,7 +2,7 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent
 DATA_DOWNLOADED = Path.home() / "Downloads" / "the-circor-digiscope-phonocardiogram-dataset-1.0.3" / "training_data"
-RAW_DATA_DIR = PROJECT_DIR / "data_raw.pickle"
+DATA_RAW_DIR = PROJECT_DIR / "data_raw.pickle"
 DATA_FOR_ML = PROJECT_DIR / "downsampled_4x_data_for_ml"
 
 
