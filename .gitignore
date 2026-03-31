@@ -4,4 +4,6 @@ downsampled_data_for_ml/
 downsampled_4x_data_for_ml/
 figures/
 checkpoints/
+data_raw/
 *.pyc
+
