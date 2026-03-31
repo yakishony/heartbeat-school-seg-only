@@ -38,7 +38,7 @@ def run():
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
 
     # 2. Split into fixed length recordings
-    dataset_split, count_deleted_recordings, count_full_0_splits = split_data_into_fixed_length_recordings(dataset_raw)
+    dataset_split = split_data_into_fixed_length_recordings(dataset_raw)
     # del dataset_raw
     # gc.collect()
 

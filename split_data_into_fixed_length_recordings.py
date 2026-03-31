@@ -1,5 +1,7 @@
+import gc
 from tracemalloc import start
 from env import RATE, RATE_DS
+from get_data import load_dataset
 
 LEN_REC = 2
 SPLIT_SAMPLES = int(LEN_REC * RATE)     # for splitting raw data
@@ -22,7 +24,7 @@ def split_data_into_fixed_length_recordings(dataset):
             end_sample = start_sample + SPLIT_SAMPLES
 
             y = rec['y'][start_sample:end_sample]
-            if all(val == 0 for val in y):
+            if (y == 0).all():
                 count_full_0_splits += 1
                 continue
 
@@ -35,5 +37,68 @@ def split_data_into_fixed_length_recordings(dataset):
     print("Split dataset length:", len(split_dataset))
     print("Count deleted recordings:", count_deleted_recordings)
     print("Count full 0 splits:", count_full_0_splits)
-    return split_dataset, count_deleted_recordings, count_full_0_splits
+    return split_dataset
             
+def split_data_into_fixed_length_recordings_without_unrecognized(dataset):
+    """Split the dataset into fixed length recordings without unrecognized.
+    every recoding with LEN_REC wont have above LEN_REC/2 unrecognized labeled timestamps """
+    split_dataset = {}
+    count_deleted_splits = 0
+
+    for rec_id, rec in dataset.items():
+        sampels_num = len(rec['signal'])
+        if sampels_num < SPLIT_SAMPLES:
+            continue
+        c_sample_index = 0
+        c_label = rec['y'][c_sample_index]
+        i = 0
+        while c_sample_index < sampels_num-1:
+            while c_label == 0 and c_sample_index < sampels_num-1:
+                c_sample_index += 1
+                c_label = rec['y'][c_sample_index]
+            if c_label == 0:
+                break
+            start_sample_index = c_sample_index
+            end_sample_index = start_sample_index + SPLIT_SAMPLES
+
+            if end_sample_index >= sampels_num-1: # if the split is the last
+                end_sample_index = sampels_num - 1
+                start_sample_index = end_sample_index - SPLIT_SAMPLES
+
+            # check if more than half of the split is unrecognized
+            unreconized_count = (rec['y'][start_sample_index:end_sample_index] == 0).sum()
+
+            c_sample_index = end_sample_index
+            c_label = rec['y'][c_sample_index]
+
+            if unreconized_count > SPLIT_SAMPLES/2:
+            split_dataset[rec_id + f"_{i}"] = {
+                'signal': rec['signal'][start_sample_index:end_sample_index],
+                'y': rec['y'][start_sample_index:end_sample_index],
+                'type': rec['type'],
+                'murmur': rec['murmur'],
+            }
+            i += 1
+
+        count_samples_that_got_into_new_dataset = i * SPLIT_SAMPLES
+        count_samples_that_didnt_got_into_new_dataset = sampels_num - count_samples_that_got_into_new_dataset
+        count_deleted_splits_for_this_recording = count_samples_that_didnt_got_into_new_dataset // SPLIT_SAMPLES
+        count_deleted_splits += count_deleted_splits_for_this_recording
+    print("Split unrecognized dataset length:", len(split_dataset))
+    print("Count deleted splits for unrecognized:", count_deleted_splits)
+
+    return split_dataset
+
+
+
+def run():
+    dataset_raw, missing = load_dataset()
+    print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
+    dataset_split_without_unreconized = split_data_into_fixed_length_recordings_without_unrecognized(dataset_raw)
+    dataset_split = split_data_into_fixed_length_recordings(dataset_raw)
+    del dataset_raw
+    gc.collect()
+  
+
+if __name__ == "__main__":
+    run()
