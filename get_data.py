@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.io import wavfile
 
-from env import DATA_DOWNLOADED, NUMERIC_CATEGORIZED_MURMUR, RAW_DATA_DIR
+from env import DATA_DOWNLOADED, NUMERIC_CATEGORIZED_MURMUR, DATA_RAW_DIR
 from pathlib import Path
 
 
@@ -28,14 +28,18 @@ def download_dataset(local_dir=DATA_DOWNLOADED):
 def build_sample_labels(tsv_path, signal_length, sr):
     """Convert interval annotations to per-sample labels."""
     y = np.zeros(signal_length, dtype=np.int64)
+    annotated = np.zeros(signal_length, dtype=bool)
     df = pd.read_csv(tsv_path, sep="\t", header=None, names=["start", "end", "label"])
 
     for _, row in df.iterrows():
         start_sample = max(int(row["start"] * sr), 0)
         end_sample = min(int(row["end"] * sr), signal_length)
         y[start_sample:end_sample] = int(row["label"])
+        annotated[start_sample:end_sample] = True
 
-    return y
+    n_unannotated = int((~annotated).sum())
+    n_annotated_as_0 = int((annotated & (y == 0)).sum())
+    return y, n_unannotated, n_annotated_as_0
 
 
 def index_tsv_files(path):
@@ -67,9 +71,9 @@ def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the mi
     """ returns pickle file with dataset as dict(rec_id: {'signal': signal, 'sr': sr, 'y': y, 'type': type, 'murmur': murmur}) 
     and missing annotations as list(rec_id) """
 
-    if use_cache and RAW_DATA_DIR.exists():
-        print(f"Loading cached dataset from {RAW_DATA_DIR}")
-        with open(RAW_DATA_DIR, "rb") as f:
+    if use_cache and DATA_RAW_DIR.exists():
+        print(f"Loading cached dataset from {DATA_RAW_DIR}")
+        with open(DATA_RAW_DIR, "rb") as f:
             return pickle.load(f)
 
     if path_to_load_data_from is None:
@@ -79,6 +83,9 @@ def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the mi
     murmur_map = build_murmur_map()
     dataset = {}
     missing_annotations = []
+    total_samples = 0
+    total_unannotated = 0
+    total_annotated_as_0 = 0
 
     for root, _, files in os.walk(path_to_load_data_from):
         for f in files:
@@ -97,12 +104,20 @@ def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the mi
             if signal.ndim > 1:
                 signal = signal[:, 0]
 
-            y = build_sample_labels(tsv_files[rec_id], len(signal), sr)
+            y, n_unannotated, n_annotated_as_0 = build_sample_labels(tsv_files[rec_id], len(signal), sr)
+            total_samples += len(signal)
+            total_unannotated += n_unannotated
+            total_annotated_as_0 += n_annotated_as_0
             dataset[rec_id] = {"signal": signal, "sr": sr, "y": y, 'type': rec_id.split('_')[1], 'murmur': murmur}
 
+    print(f"Unannotated (not covered by any TSV row, y=0 by default): "
+          f"{total_unannotated/total_samples:.1%} ({total_unannotated}/{total_samples} samples)")
+    print(f"Annotated as 0 (explicitly labeled 0 in TSV): "
+          f"{total_annotated_as_0/total_samples:.1%} ({total_annotated_as_0}/{total_samples} samples)")
+
     if use_cache:
-        print(f"Caching dataset to {RAW_DATA_DIR}")
-        with open(RAW_DATA_DIR, "wb") as f:
+        print(f"Caching dataset to {DATA_RAW_DIR}")
+        with open(DATA_RAW_DIR, "wb") as f:
             pickle.dump((dataset, missing_annotations), f)
 
     return dataset, missing_annotations
