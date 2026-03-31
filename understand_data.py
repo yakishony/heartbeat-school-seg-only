@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,6 +6,7 @@ from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES, DATA_FOR_ML
 from get_data import load_dataset
 from utils.plot_utils import plot_recording
 from utils.data_utils import dataset_to_summary_df
+from prepare_data import BANDPASS_LOWCUT, BANDPASS_HIGHCUT 
 
 def plot_pie_chart_of_murmur_distribution():
     dataset, _ = load_dataset()
@@ -163,12 +165,44 @@ def print_tail_middele_and_head_unrecognized_precentage_from_recordings():
     print(f"Count of middle unrecognized: {counts[1]}%")
     print(f"Count of tail unrecognized: {counts[2]}%")
 
+def plot_fft(data_set=None, signal_id=None, title="FFT", sr=RATE):
+    # Import BANDPASS filter parameters from prepare_data.py
+
+    if data_set is None:
+        data_set, _ = load_dataset()
+    if signal_id is None:
+        signal_id = random.choice(list(data_set.keys()))
+
+    signal = data_set[signal_id]['signal']
+    n = len(signal)
+    freqs = np.fft.rfftfreq(n, d=1.0 / sr)
+    magnitudes = np.abs(np.fft.rfft(signal)) / n
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(freqs, magnitudes)
+    # Add red dotted vertical lines at BANDPASS_LOWCUT and BANDPASS_HIGHCUT
+    plt.axvline(BANDPASS_LOWCUT, color='red', linestyle='--', linewidth=1.5, label=f'Lowcut {BANDPASS_LOWCUT} Hz')
+    plt.axvline(BANDPASS_HIGHCUT, color='red', linestyle='--', linewidth=1.5, label=f'Highcut {BANDPASS_HIGHCUT} Hz')
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Magnitude")
+    plt.title(title)
+    plt.xlim(0, sr / 2)
+    plt.legend()
+    plt.tight_layout()
+    name = f"fig_{title}_{signal_id}.png"
+    plt.savefig(FIGURES_DIR / name , dpi=100)
+    plt.show()
+
+    print(f"Saved {FIGURES_DIR / name }")
+    return signal_id
+
+
 def plot_example(dataset, df):
     example_id = df['rec_id'].iloc[2]
     plot_recording(example_id, dataset, [4.3, 4.5], [-3000, 3000])
 
-
 if __name__ == "__main__":
     # print_tail_middele_and_head_unrecognized_precentage_from_recordings()
     # plot_unrecognized_by_timestamp()
-    plot_pie_chart_of_murmur_distribution()
+    # plot_pie_chart_of_murmur_distribution()
+    # plot_fft()

@@ -11,6 +11,7 @@ from env import DATA_FOR_ML, DOWNSAMPLE_FACTOR
 from get_data import load_dataset
 from prepare_data import normalize_dataset, bandpass_filter_dataset, downsample_dataset
 from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings
+from understand_data import plot_fft
 from utils.plot_utils import plot_recording_before_and_after
 
 
@@ -38,23 +39,23 @@ def run():
 
     # 2. Split into fixed length recordings
     dataset_split, count_deleted_recordings, count_full_0_splits = split_data_into_fixed_length_recordings(dataset_raw)
-    del dataset_raw
-    gc.collect()
-    print(f"Split into {len(dataset_split)} recordings")
-    print(f"Deleted {count_deleted_recordings} recordings")
-    print(f"Deleted {count_full_0_splits} splits")
+    # del dataset_raw
+    # gc.collect()
 
     # 3. Normalize
     dataset_normalized, global_max = normalize_dataset(dataset_split)
     del dataset_split
     gc.collect()
     print(f"Normalized (global_max={global_max:.4f})")
-
+    signal_id = plot_fft(dataset_normalized, title="Before Bandpass Filtering")
+   
     # 4. Bandpass filter
     dataset_bandpassed = bandpass_filter_dataset(dataset_normalized)
     del dataset_normalized
     gc.collect()
     print("Bandpass filtered")
+    plot_fft(dataset_bandpassed, signal_id=signal_id, title="After Bandpass Filtering")
+    
 
     # 5. Downsample (safe after bandpass — no aliasing)
     dataset_downsampled = downsample_dataset(dataset_bandpassed, DOWNSAMPLE_FACTOR)
@@ -63,7 +64,7 @@ def run():
     print(f"Downsampled by {DOWNSAMPLE_FACTOR}x")
 
     # 6. Save processed dataset as .npy files
-    save_dataset_as_npy(dataset_downsampled)
+    save_dataset_as_npy(dataset_downsampled) # will remove the directory if it already exists
 
     # 7. Free dataset from RAM
     del dataset_downsampled
