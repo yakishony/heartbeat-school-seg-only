@@ -16,18 +16,20 @@ from utils.plot_utils import plot_recording_before_and_after
 
 
 def save_dataset_as_npy(dataset, out_dir=DATA_FOR_ML):
-    """Save each recording's signal and labels as separate .npy files."""
+    """Save each recording's signal, segmentation labels, and murmur label as .npy."""
     if out_dir.exists():
-        shutil.rmtree(out_dir) # remove the directory if it exists
+        shutil.rmtree(out_dir)
     signal_dir = out_dir / "signals"
     label_dir = out_dir / "labels"
+    murmur_dir = out_dir / "murmurs"
     signal_dir.mkdir(parents=True, exist_ok=True)
     label_dir.mkdir(parents=True, exist_ok=True)
+    murmur_dir.mkdir(parents=True, exist_ok=True)
 
-    for rec_id, rec in dataset.items(): # saving each recording as a separate .npy file 
-        # so that it can be loaded into RAM seperately
+    for rec_id, rec in dataset.items():
         np.save(signal_dir / f"{rec_id}.npy", rec["signal"].astype(np.float32))
         np.save(label_dir / f"{rec_id}.npy", rec["y"].astype(np.int64))
+        np.save(murmur_dir / f"{rec_id}.npy", np.int64(rec["murmur"]))
 
     print(f"Saved {len(dataset)} recordings to {out_dir}")
 
