@@ -61,33 +61,33 @@ def make_tf_dataset(rec_ids, batch_size=BATCH_SIZE, shuffle=True):
 def build_model(seq_len=SAMPLES_NUM, num_classes=NUM_CLASSES):
     inp = layers.Input(shape=(seq_len, 1))
 
-    # Encoder
+    # Encoder (skips saved before pooling, U-Net style)
     x = layers.Conv1D(64, 7, padding="same", activation="relu")(inp)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.1)(x)
-    x = layers.MaxPool1D(pool_size=POOL_1)(x)
-    skip1 = x
+    skip1 = x                                        # (2000, 64)
+    x = layers.MaxPool1D(pool_size=POOL_1)(x)        # (500, 64)
 
     x = layers.Conv1D(128, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
-    x = layers.MaxPool1D(pool_size=POOL_2)(x)
-    skip2 = x
+    skip2 = x                                        # (500, 128)
+    x = layers.MaxPool1D(pool_size=POOL_2)(x)        # (125, 128)
 
     # BiGRU
     x = layers.Bidirectional(
         layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)
     )(x)
 
-    # Decoder
-    x = layers.Concatenate()([x, skip2])
-    x = layers.UpSampling1D(size=POOL_2)(x)
+    # Decoder (upsample then concat, U-Net style)
+    x = layers.UpSampling1D(size=POOL_2)(x)          # (500, 256)
+    x = layers.Concatenate()([x, skip2])              # (500, 384)
     x = layers.Conv1D(64, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
 
-    x = layers.Concatenate()([x, skip1])
-    x = layers.UpSampling1D(size=POOL_1)(x)
+    x = layers.UpSampling1D(size=POOL_1)(x)          # (2000, 64)
+    x = layers.Concatenate()([x, skip1])              # (2000, 128)
     x = layers.Conv1D(num_classes, 1, activation="softmax")(x)
 
     return Model(inputs=inp, outputs=x)
