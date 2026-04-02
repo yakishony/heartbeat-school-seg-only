@@ -230,6 +230,12 @@ def main(resume_checkpoint: str | None = None):
             filepath=str(checkpoint_dir / "epoch_{epoch:03d}.keras"),
             save_freq="epoch",
         ),
+        keras.callbacks.ModelCheckpoint(
+            filepath=str(checkpoint_dir / "best.keras"),
+            monitor="val_loss",
+            save_best_only=True,
+            verbose=1,
+        ),
         keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6, verbose=1,
         ),
