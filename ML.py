@@ -29,15 +29,15 @@ class SparseRecall(keras.metrics.Metric):
     def __init__(self, class_id, name=None, **kwargs):
         super().__init__(name=name or f"recall_c{class_id}", **kwargs)
         self.class_id = class_id
-        self.tp = self.add_weight("tp", initializer="zeros")
-        self.fn = self.add_weight("fn", initializer="zeros")
+        self.tp = self.add_variable(name="tp", shape=(), initializer="zeros")
+        self.fn = self.add_variable(name="fn", shape=(), initializer="zeros")
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         pred = tf.cast(tf.argmax(y_pred, axis=-1), tf.int64)
         y_true = tf.cast(tf.squeeze(y_true), tf.int64)
         is_class = tf.equal(y_true, self.class_id)
-        self.tp.assign_add(tf.reduce_sum(tf.cast(is_class & tf.equal(pred, self.class_id), tf.float32)))
-        self.fn.assign_add(tf.reduce_sum(tf.cast(is_class & tf.not_equal(pred, self.class_id), tf.float32)))
+        self.tp.assign(self.tp + tf.reduce_sum(tf.cast(is_class & tf.equal(pred, self.class_id), tf.float32)))
+        self.fn.assign(self.fn + tf.reduce_sum(tf.cast(is_class & tf.not_equal(pred, self.class_id), tf.float32)))
 
     def result(self):
         return self.tp / (self.tp + self.fn + 1e-7)
@@ -52,15 +52,15 @@ class SparsePrecision(keras.metrics.Metric):
     def __init__(self, class_id, name=None, **kwargs):
         super().__init__(name=name or f"precision_c{class_id}", **kwargs)
         self.class_id = class_id
-        self.tp = self.add_weight("tp", initializer="zeros")
-        self.fp = self.add_weight("fp", initializer="zeros")
+        self.tp = self.add_variable(name="tp", shape=(), initializer="zeros")
+        self.fp = self.add_variable(name="fp", shape=(), initializer="zeros")
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         pred = tf.cast(tf.argmax(y_pred, axis=-1), tf.int64)
         y_true = tf.cast(tf.squeeze(y_true), tf.int64)
         pred_class = tf.equal(pred, self.class_id)
-        self.tp.assign_add(tf.reduce_sum(tf.cast(pred_class & tf.equal(y_true, self.class_id), tf.float32)))
-        self.fp.assign_add(tf.reduce_sum(tf.cast(pred_class & tf.not_equal(y_true, self.class_id), tf.float32)))
+        self.tp.assign(self.tp + tf.reduce_sum(tf.cast(pred_class & tf.equal(y_true, self.class_id), tf.float32)))
+        self.fp.assign(self.fp + tf.reduce_sum(tf.cast(pred_class & tf.not_equal(y_true, self.class_id), tf.float32)))
 
     def result(self):
         return self.tp / (self.tp + self.fp + 1e-7)
