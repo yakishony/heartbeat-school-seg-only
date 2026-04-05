@@ -1,5 +1,6 @@
 import argparse
 import matplotlib.pyplot as plt
+import tensorflow as tf
 
 
 def plot_training_curves(history, save_path=None):
@@ -37,7 +38,8 @@ def plot_training_curves(history, save_path=None):
 
         for ax in axes.flat:
             ax.set_xlabel('Epoch')
-            ax.legend()
+            if ax.get_legend_handles_labels()[1]:
+                ax.legend()
             ax.grid(True)
     else:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
@@ -59,8 +61,10 @@ def evaluate_best(run_name: str):
     """Build fresh model, load weights from best.keras, evaluate on train/val/test."""
     from ML import (
         build_model, split_ids, make_tf_dataset, weighted_murmur_loss,
+        weighted_seg_loss, compute_seg_class_weights, compute_murmur_class_weights,
         SparseRecall, SparsePrecision, BATCH_SIZE, SEG_LOSS_WEIGHT, MURMUR_LOSS_WEIGHT,
     )
+    import ML as ml_module
     from env import DATA_FOR_ML
 
     checkpoint_dir = DATA_FOR_ML.parent / "checkpoints" / run_name
@@ -68,10 +72,16 @@ def evaluate_best(run_name: str):
     if not best_path.exists():
         raise FileNotFoundError(f"No best.keras in {checkpoint_dir}")
 
+    train_ids, val_ids, test_ids = split_ids()
+    ml_module._SEG_WEIGHTS_TENSOR = tf.constant(
+        compute_seg_class_weights(train_ids), dtype=tf.float32)
+    ml_module._MURMUR_WEIGHTS_TENSOR = tf.constant(
+        compute_murmur_class_weights(train_ids), dtype=tf.float32)
+
     model = build_model()
     model.load_weights(best_path)
     model.compile(
-        loss={"seg": "sparse_categorical_crossentropy", "murmur": weighted_murmur_loss},
+        loss={"seg": weighted_seg_loss, "murmur": weighted_murmur_loss},
         loss_weights={"seg": SEG_LOSS_WEIGHT, "murmur": MURMUR_LOSS_WEIGHT},
         metrics={
             "seg": "accuracy",
@@ -83,7 +93,6 @@ def evaluate_best(run_name: str):
         },
     )
 
-    train_ids, val_ids, test_ids = split_ids()
     for split_name, ids in [("Train", train_ids), ("Val", val_ids), ("Test", test_ids)]:
         ds = make_tf_dataset(ids, BATCH_SIZE, shuffle=False)
         res = model.evaluate(ds, return_dict=True, verbose=0)

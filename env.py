@@ -25,7 +25,3 @@ NUMERIC_CATEGORIZED_MURMUR = {
 NUM_MURMUR_CLASSES = 3
 MURMUR_NAMES = ['Present', 'Absent', 'Unknown']
 
-# Class weights: inverse frequency, but cap Unknown so it doesn't dominate.
-# Absent ~75.6%, Present ~19.5%, Unknown ~5%  →  raw inverse: 1.32, 5.13, 20.0
-# Cap Unknown at ~Present level to avoid over-weighting noisy labels.
-MURMUR_CLASS_WEIGHTS = {0: 5.0, 1: 1.3, 2: 5.0}
