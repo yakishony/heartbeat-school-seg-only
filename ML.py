@@ -4,7 +4,7 @@ Head 1 (seg):    per-sample segmentation — classifies each time-step as one of
                  5 classes: S1 / S2 / systole / diastole / background.
 Head 2 (murmur): recording-level murmur classification — one label per whole
                  recording: Present / Absent / Unknown.
-Architecture: shared CNN+BiGRU encoder → U-Net decoder (seg) + GlobalAvgPool→Dense (murmur)
+Architecture: shared CNN encoder → separate BiGRU per head → U-Net decoder (seg) / Dense (murmur)
 """
 # argparse: parses command-line arguments (e.g. --resume flag)
 import argparse
@@ -25,18 +25,14 @@ from sklearn.model_selection import GroupShuffleSplit
 
 from evaluate_model import plot_training_curves
 from env import (
-    DATA_FOR_ML, CLASSES, NUM_MURMUR_CLASSES, MURMUR_CLASS_WEIGHTS,
+    DATA_FOR_ML, CLASSES, NUM_MURMUR_CLASSES,
 )
 from split_data_into_fixed_length_recordings import SAMPLES_NUM
 
-# Pre-build a TF constant tensor of per-class weights for the murmur loss.
-# tf.constant: creates an immutable tensor that lives on the GPU/CPU graph.
-# Purpose: rare classes (e.g. "Present") get higher weight so the model
-# doesn't ignore them in favor of the majority class.
-_MURMUR_WEIGHTS_TENSOR = tf.constant(
-    [MURMUR_CLASS_WEIGHTS[i] for i in range(NUM_MURMUR_CLASSES)],
-    dtype=tf.float32,
-)
+
+
+_SEG_WEIGHTS_TENSOR = None      # populated in main() after split
+_MURMUR_WEIGHTS_TENSOR = None   # populated in main() after split
 
 
 # Recall = TP / (TP + FN) — "of all actual positives, how many did we catch?"
@@ -130,12 +126,12 @@ EARLY_STOPPING_PATIENCE = 5
 # Too high = unstable training; too low = very slow convergence.
 LEARNING_RATE = 1e-3
 # Downsampling factors in the encoder. The signal starts at 2000 time-steps:
-POOL_1 = 4           # MaxPool reduces 2000 → 500
-POOL_2 = 4           # MaxPool reduces 500 → 125
+POOL_1 = 4        
+POOL_2 = 4         
 # How much each head's loss contributes to the total loss the optimizer minimizes.
 # total_loss = SEG_LOSS_WEIGHT * seg_loss + MURMUR_LOSS_WEIGHT * murmur_loss
 SEG_LOSS_WEIGHT = 1.0
-MURMUR_LOSS_WEIGHT = 0.5
+MURMUR_LOSS_WEIGHT = 0.1
 
 
 # ── Data loading ──
@@ -216,6 +212,40 @@ def make_tf_dataset(rec_ids, batch_size=BATCH_SIZE, shuffle=True):
     #   on the current batch, so data loading doesn't become a bottleneck.
     ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     return ds
+    
+# --class weights--
+
+def _balanced_class_weights(counts):
+    """sklearn-style 'balanced' weights: total / (n_classes * count_per_class).
+    Mean weight across classes = 1.0, so overall loss scale is unchanged."""
+    n_classes = len(counts)
+    total = counts.sum()
+    return total / (n_classes * counts + 1e-8)
+
+
+def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES)):
+    """Compute 1-proportion weights for segmentation from training labels."""
+    counts = np.zeros(num_classes, dtype=np.float64)
+    for rid in rec_ids:
+        labels = np.load(DATA_FOR_ML / "labels" / f"{rid}.npy")
+        for c in range(num_classes):
+            counts[c] += np.sum(labels == c)
+    weights = _balanced_class_weights(counts)
+    print("Seg class counts:", dict(enumerate(counts.astype(int))))
+    print("Seg class weights:", dict(enumerate(np.round(weights, 3))))
+    return weights
+
+
+def compute_murmur_class_weights(rec_ids, num_classes=NUM_MURMUR_CLASSES):
+    """Compute balanced weights for murmur from training labels."""
+    counts = np.zeros(num_classes, dtype=np.float64)
+    for rid in rec_ids:
+        m = np.load(DATA_FOR_ML / "murmurs" / f"{rid}.npy").item()
+        counts[m] += 1
+    weights = _balanced_class_weights(counts)
+    print("Murmur class counts:", dict(enumerate(counts.astype(int))))
+    print("Murmur class weights:", dict(enumerate(np.round(weights, 3))))
+    return weights
 
 
 # ── Model ──
@@ -259,54 +289,42 @@ def build_model(seq_len=SAMPLES_NUM, num_seg_classes=NUM_SEG_CLASSES,
     skip2 = x                                        # (500, 128)
     x = layers.MaxPool1D(pool_size=POOL_2)(x)        # (125, 128)
 
-    # ── Shared BiGRU bottleneck ──
-    # Bidirectional: runs the GRU in both forward and backward directions over time,
-    #   then concatenates the outputs. This lets each time-step see context from
-    #   both the past and future of the signal.
-    # GRU (Gated Recurrent Unit): a recurrent layer that processes the sequence
-    #   step-by-step, maintaining a hidden state that captures temporal dependencies.
-    #   128 = hidden units per direction (→ 256 total after bidirectional concat).
-    # return_sequences=True: output a value at every time-step (not just the last).
-    #   Needed because the segmentation head requires per-step predictions.
-    # dropout: fraction of input connections to drop each step.
-    # recurrent_dropout: fraction of recurrent (hidden-to-hidden) connections to drop.
-    bottleneck = layers.Bidirectional(
-        layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)
-    )(x)                                              # (125, 256)
+    # ── Separate BiGRU per head ──
+    # Each head gets its own BiGRU so it can learn temporal patterns
+    # specialized for its task (per-step segmentation vs. global murmur).
+
+    # Seg BiGRU: return_sequences=True — outputs at every time-step for the decoder.
+    seg_gru = layers.Bidirectional(
+        layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2),
+        name="seg_bigru",
+    )(x)                                                # (125, 256)
+
+    # Murmur BiGRU: return_sequences=False — outputs a single summary vector.
+    mur_gru = layers.Bidirectional(
+        layers.GRU(128, return_sequences=False, dropout=0.2, recurrent_dropout=0.2),
+        name="mur_bigru",
+    )(x)                                                # (256,)
 
     # ── Head 1: Segmentation decoder (U-Net style) ──
-    # UpSampling1D: repeats each time-step POOL_2 times, reversing the MaxPool.
-    #   Goes from 125 back to 500 time-steps.
-    seg = layers.UpSampling1D(size=POOL_2)(bottleneck) # (500, 256)
-    # Concatenate: glues the upsampled features with skip2 along the channel axis.
-    #   This combines the decoder's high-level understanding with the encoder's
-    #   fine-grained details from the same resolution — the core U-Net idea.
-    seg = layers.Concatenate()([seg, skip2])            # (500, 256+128=384)
+    seg = layers.UpSampling1D(size=POOL_2)(seg_gru)     # (500, 256)
+    seg = layers.Concatenate()([seg, skip2])             # (500, 384)
     seg = layers.Conv1D(64, 5, padding="same", activation="relu")(seg)
     seg = layers.BatchNormalization()(seg)
     seg = layers.Dropout(0.2)(seg)
 
-    seg = layers.UpSampling1D(size=POOL_1)(seg)        # (2000, 64)
-    seg = layers.Concatenate()([seg, skip1])            # (2000, 64+64=128)
-    # Final Conv1D with kernel_size=1: acts like a per-time-step Dense layer.
-    #   Maps 128 channels → 5 class probabilities at each of 2000 time-steps.
-    # softmax: converts raw scores into probabilities that sum to 1 across classes.
-    # name="seg": the name Keras uses to route the loss and metrics for this head.
+    seg = layers.UpSampling1D(size=POOL_1)(seg)          # (2000, 64)
+    seg = layers.Concatenate()([seg, skip1])              # (2000, 128)
     seg_out = layers.Conv1D(
         num_seg_classes, 1, activation="softmax", name="seg"
-    )(seg)                                              # (2000, 5)
+    )(seg)                                                # (2000, 5)
 
     # ── Head 2: Murmur classification ──
-    # GlobalAveragePooling1D: averages across all 125 time-steps → single vector.
-    #   Collapses the time dimension so we get one prediction per recording.
-    cls = layers.GlobalAveragePooling1D()(bottleneck)   # (256,)
-    # Dense(64): a fully-connected layer mapping 256 features → 64.
-    cls = layers.Dense(64, activation="relu")(cls)
+    # mur_gru is already a single vector (256,), no pooling needed.
+    cls = layers.Dense(64, activation="relu")(mur_gru)
     cls = layers.Dropout(0.3)(cls)
-    # Dense(3, softmax): outputs 3 murmur class probabilities (Present/Absent/Unknown).
     cls_out = layers.Dense(
         num_murmur_classes, activation="softmax", name="murmur"
-    )(cls)                                              # (3,)
+    )(cls)                                                # (3,)
 
     # Model: wires together the input and both output heads into a single trainable object.
     return Model(inputs=inp, outputs=[seg_out, cls_out])
@@ -319,13 +337,16 @@ def weighted_murmur_loss(y_true, y_pred):
     #   then gather returns [3.0, 1.5, 1.0] — one weight per sample.
     # tf.cast: converts y_true from int64 to int32 (gather requires integer indices).
     weights = tf.gather(_MURMUR_WEIGHTS_TENSOR, tf.cast(y_true, tf.int32))
-    # sparse_categorical_crossentropy: standard classification loss.
-    #   "sparse" means y_true is an integer class index (not one-hot).
-    #   For each sample, loss = -log(predicted probability of the true class).
-    #   Lower when the model is confident and correct; higher when wrong.
     loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
-    # Multiply each sample's loss by its class weight, so misclassifying
-    # a rare class (e.g. "Present") costs more than misclassifying a common one.
+    return loss * weights
+
+
+def weighted_seg_loss(y_true, y_pred):
+    """Per-timestep weighted cross-entropy for segmentation."""
+    assert _SEG_WEIGHTS_TENSOR is not None, \
+        "Call compute_seg_class_weights() before using this loss"
+    weights = tf.gather(_SEG_WEIGHTS_TENSOR, tf.cast(y_true, tf.int32))
+    loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
     return loss * weights
 
 
@@ -367,11 +388,16 @@ def main(resume_checkpoint: str | None = None):
     # resume_checkpoint: optional path to a .keras file to continue training from.
     #   str | None means it's either a string or None (no checkpoint → fresh start).
 
+    global _SEG_WEIGHTS_TENSOR, _MURMUR_WEIGHTS_TENSOR
+
     train_ids, val_ids, test_ids = split_ids()
     print(f"Train: {len(train_ids)}, Val: {len(val_ids)}, Test: {len(test_ids)}")
 
-    # Build TF data pipelines. Training data is shuffled; validation is not
-    # (shuffling val would waste time and doesn't affect evaluation).
+    _SEG_WEIGHTS_TENSOR = tf.constant(
+        compute_seg_class_weights(train_ids), dtype=tf.float32)
+    _MURMUR_WEIGHTS_TENSOR = tf.constant(
+        compute_murmur_class_weights(train_ids), dtype=tf.float32)
+
     train_ds = make_tf_dataset(train_ids, BATCH_SIZE, shuffle=True)
     val_ds = make_tf_dataset(val_ids, BATCH_SIZE, shuffle=False)
 
@@ -399,9 +425,7 @@ def main(resume_checkpoint: str | None = None):
             # loss: which loss function to use for each output head.
             # Keys "seg" and "murmur" match the layer names in the model.
             loss={
-                # Standard cross-entropy for segmentation (integer labels, not one-hot).
-                "seg": "sparse_categorical_crossentropy",
-                # Our custom weighted loss for murmur (penalizes rare-class errors more).
+                "seg": weighted_seg_loss,
                 "murmur": weighted_murmur_loss,
             },
             # loss_weights: how much each head's loss contributes to the total.
