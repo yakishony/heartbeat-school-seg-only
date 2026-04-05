@@ -1,3 +1,4 @@
+import argparse
 import matplotlib.pyplot as plt
 
 
@@ -52,3 +53,69 @@ def plot_training_curves(history, save_path=None):
     if save_path:
         plt.savefig(save_path, dpi=150)
     plt.show()
+
+
+def evaluate_best(run_name: str):
+    """Build fresh model, load weights from best.keras, evaluate on train/val/test."""
+    from ML import (
+        build_model, split_ids, make_tf_dataset, weighted_murmur_loss,
+        SparseRecall, SparsePrecision, BATCH_SIZE, SEG_LOSS_WEIGHT, MURMUR_LOSS_WEIGHT,
+    )
+    from env import DATA_FOR_ML
+
+    checkpoint_dir = DATA_FOR_ML.parent / "checkpoints" / run_name
+    best_path = checkpoint_dir / "best.keras"
+    if not best_path.exists():
+        raise FileNotFoundError(f"No best.keras in {checkpoint_dir}")
+
+    model = build_model()
+    model.load_weights(best_path)
+    model.compile(
+        loss={"seg": "sparse_categorical_crossentropy", "murmur": weighted_murmur_loss},
+        loss_weights={"seg": SEG_LOSS_WEIGHT, "murmur": MURMUR_LOSS_WEIGHT},
+        metrics={
+            "seg": "accuracy",
+            "murmur": [
+                "accuracy",
+                SparseRecall(class_id=0, name="recall_present"),
+                SparsePrecision(class_id=0, name="precision_present"),
+            ],
+        },
+    )
+
+    train_ids, val_ids, test_ids = split_ids()
+    for split_name, ids in [("Train", train_ids), ("Val", val_ids), ("Test", test_ids)]:
+        ds = make_tf_dataset(ids, BATCH_SIZE, shuffle=False)
+        res = model.evaluate(ds, return_dict=True, verbose=0)
+        print(f"\n── {split_name} ({len(ids)} samples) ──")
+        for k, v in res.items():
+            print(f"  {k}: {v:.4f}")
+
+
+def list_runs():
+    from env import DATA_FOR_ML
+    checkpoint_root = DATA_FOR_ML.parent / "checkpoints"
+    runs = sorted(p.name for p in checkpoint_root.iterdir()
+                  if p.is_dir() and (p / "best.keras").exists())
+    if not runs:
+        print("No runs with best.keras found.")
+    else:
+        print("Available runs:")
+        for i, r in enumerate(runs, 1):
+            print(f"  {i}. {r}")
+    return runs
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("run_name", nargs="?", default=None,
+                        help="Run name to evaluate (omit to list available runs)")
+    args = parser.parse_args()
+    if args.run_name is None:
+        runs = list_runs()
+        if runs:
+            choice = input("Enter run number or name: ").strip()
+            args.run_name = runs[int(choice) - 1] if choice.isdigit() else choice
+        else:
+            exit(1)
+    evaluate_best(args.run_name)
