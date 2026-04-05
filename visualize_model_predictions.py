@@ -10,7 +10,29 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from env import DATA_FOR_ML, FIGURES_DIR, RATE_DS, CATEGORY_NAMES, MURMUR_NAMES
 from ML import load_all_ids
 from utils.plot_utils import LABEL_COLORS, LABEL_NAMES
-CHECKPOINT = "checkpoints/less_unrecognized_murmur_cls_model8/best.keras"
+CHECKPOINT = "checkpoints/normalization_pre_rec_split_regular_model10/best.keras"
+
+def annotate_precision_recall(ax, cm):
+    """Add per-class recall (right of rows) and precision (below columns)."""
+    n = cm.shape[0]
+    recall = np.diag(cm) / cm.sum(axis=1).clip(min=1)
+    precision = np.diag(cm) / cm.sum(axis=0).clip(min=1)
+
+    for i in range(n):
+        ax.text(n - 0.5 + 0.4, i, f"{recall[i]:.2f}",
+                ha="left", va="center", fontsize=8, fontweight="bold", color="green")
+    for j in range(n):
+        ax.text(j, n - 0.5 + 0.4, f"{precision[j]:.2f}",
+                ha="center", va="top", fontsize=8, fontweight="bold", color="purple")
+
+    ax.text(n - 0.5 + 0.4, -0.7, "Recall", ha="left", va="center",
+            fontsize=8, fontstyle="italic", color="green")
+    ax.text(-0.7, n - 0.5 + 0.4, "Prec.", ha="center", va="top",
+            fontsize=8, fontstyle="italic", color="purple")
+
+    accuracy = np.diag(cm).sum() / cm.sum()
+    ax.text(n - 0.5 + 0.4, n - 0.5 + 0.4, f"Acc:\n{accuracy:.2f}",
+            ha="left", va="top", fontsize=8, fontweight="bold", color="darkred")
 N_SAMPLES = 5
 SEED = 7
 GAP = 0.3  # gap between truth and prediction traces (in signal units)
@@ -55,20 +77,15 @@ def plot_confusion_matrix(model, batch_size=128):
     cm = confusion_matrix(all_true, all_pred, labels=list(range(len(CATEGORY_NAMES))))
     cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    disp1 = ConfusionMatrixDisplay(cm_norm, display_labels=CATEGORY_NAMES)
-    disp1.plot(ax=ax1, cmap="Blues", colorbar=False, values_format=".2f")
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            disp1.text_[i][j].set_text(str(cm[i, j]))
-    ax1.set_title("Counts")
-    ConfusionMatrixDisplay(cm_norm, display_labels=CATEGORY_NAMES).plot(ax=ax2, cmap="Blues", values_format=".2f", colorbar=False)
-    ax2.set_title("Normalized (row)")
-    fig.suptitle(f"Confusion Matrix — {name}", fontsize=13)
-    fig.tight_layout()
+    disp = ConfusionMatrixDisplay(cm_norm, display_labels=CATEGORY_NAMES)
+    disp.plot(cmap="Blues", values_format=".2f", colorbar=False)
+    annotate_precision_recall(disp.ax_, cm)
+    disp.ax_.set_title(f"Normalized Confusion Matrix — {name}", fontsize=13)
+    disp.figure_.set_size_inches(8, 5.5)
+    disp.figure_.tight_layout()
 
     out = FIGURES_DIR / f"fig_confusion_matrix_{name}.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    disp.figure_.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Saved {out}")
     plt.show()
 
@@ -93,22 +110,18 @@ def plot_murmur_confusion_matrix(model, batch_size=128):
     cm = confusion_matrix(all_true, all_pred, labels=list(range(len(MURMUR_NAMES))))
     cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-    disp1 = ConfusionMatrixDisplay(cm_norm, display_labels=MURMUR_NAMES)
-    disp1.plot(ax=ax1, cmap="Oranges", colorbar=False, values_format=".2f")
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            disp1.text_[i][j].set_text(str(cm[i, j]))
-    ax1.set_title("Counts")
-    ConfusionMatrixDisplay(cm_norm, display_labels=MURMUR_NAMES).plot(ax=ax2, cmap="Oranges", values_format=".2f", colorbar=False)
-    ax2.set_title("Normalized (row)")
-    fig.suptitle(f"Confusion Matrix — Murmur ({name})", fontsize=13)
-    fig.tight_layout()
+    disp = ConfusionMatrixDisplay(cm_norm, display_labels=MURMUR_NAMES)
+    disp.plot(cmap="Oranges", values_format=".2f", colorbar=False)
+    annotate_precision_recall(disp.ax_, cm)
+    disp.ax_.set_title(f"Normalized Confusion Matrix — Murmur ({name})", fontsize=13)
+    disp.figure_.set_size_inches(7, 4.5)
+    disp.figure_.tight_layout()
 
     out = FIGURES_DIR / f"fig_murmur_confusion_matrix_{name}.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    disp.figure_.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Saved {out}")
     plt.show()
+
 
 
 def main():
