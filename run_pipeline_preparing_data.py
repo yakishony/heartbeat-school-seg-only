@@ -40,7 +40,7 @@ def run():
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
 
     # 2. Split into fixed length recordings
-    dataset_split = split_data_into_fixed_length_recordings_without_unrecognized(dataset_raw)
+    dataset_split = split_data_into_fixed_length_recordings(dataset_raw)
     del dataset_raw
     gc.collect()
 
@@ -48,15 +48,13 @@ def run():
     dataset_normalized, global_max = normalize_dataset(dataset_split)
     del dataset_split
     gc.collect()
-    print(f"Normalized (global_max={global_max:.4f})")
-    signal_id = plot_fft(dataset_normalized, title="Before Bandpass Filtering")
+    print(f"Normalized (global_max={global_max:.4f})" if global_max is not None else "Normalized (per-recording)")
    
     # 4. Bandpass filter
     dataset_bandpassed = bandpass_filter_dataset(dataset_normalized)
     del dataset_normalized
     gc.collect()
     print("Bandpass filtered")
-    plot_fft(dataset_bandpassed, signal_id=signal_id, title="After Bandpass Filtering")
     
 
     # 5. Downsample (safe after bandpass — no aliasing)

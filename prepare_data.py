@@ -6,7 +6,7 @@ from scipy.signal import butter, filtfilt
 from env import RATE
 
 
-NORMALIZE_TO_GLOBAL_MAX = True
+NORMALIZE_TO_GLOBAL_MAX = False
 BANDPASS_LOWCUT = 60.0
 BANDPASS_HIGHCUT = 150.0
 
