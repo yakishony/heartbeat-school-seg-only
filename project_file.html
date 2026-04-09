@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 18px; line-height: 1.8; padding: 40px; max-width: 900px; margin: auto; }
+  h1 { font-size: 28px; border-bottom: 3px solid #2c3e50; padding-bottom: 8px; }
+  h2 { font-size: 22px; color: #2c3e50; margin-top: 40px; }
+  h3 { font-size: 19px; color: #34495e; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #bbb; padding: 8px 12px; text-align: right; }
+  th { background: #ecf0f1; }
+  .arch-box { background: #f7f9fb; border: 1px solid #ccc; border-radius: 8px; padding: 18px; margin: 16px 0; font-family: monospace; font-size: 15px; direction: ltr; text-align: left; line-height: 1.6; white-space: pre-wrap; }
+  .note { background: #fef9e7; border-right: 4px solid #f1c40f; padding: 10px 14px; margin: 12px 0; font-size: 16px; }
+  code { background: #eee; padding: 2px 5px; border-radius: 3px; font-size: 15px; direction: ltr; }
+  .figure-placeholder { text-align: center; margin: 20px 0; color: #888; font-style: italic; }
+  .formula { direction: ltr; text-align: center; font-family: monospace; font-size: 16px; margin: 12px 0; background: #f4f4f4; padding: 10px; border-radius: 6px; }
+</style>
+</head>
+<body>
+
+<h1>שלב בניית ואימון המודל (Build and Train Deep Learning Model)</h1>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>1. תיאור גרפי של ארכיטקטורת המודל</h2>
+
+<p>
+המודל הוא רשת עצבית עמוקה מסוג <strong>Conv1D-BiGRU</strong> בעלת שני ראשים (Dual-Head), המבוססת על ארכיטקטורת <strong>U-Net</strong>. הרשת מקבלת כקלט הקלטת PCG בת 2 שניות (2,000 נקודות זמן לאחר Downsampling) ומפיקה שני פלטים במקביל:
+</p>
+<ul>
+<li><strong>ראש סגמנטציה (Segmentation Head)</strong> — סיווג כל נקודת זמן לאחד מ-5 מצבים: S1, S2, Systole, Diastole, Background.</li>
+<li><strong>ראש זיהוי אוושה (Murmur Head)</strong> — סיווג ברמת ההקלטה כולה לאחת מ-3 קטגוריות: Present, Absent, Unknown.</li>
+</ul>
+
+<div class="arch-box">
+Input: (2000, 1)
+       │
+       ▼
+┌──────────────────────────────────────────────────┐
+│            SHARED ENCODER (Encoder משותף)         │
+│                                                  │
+│  Conv1D(64, kernel=7) + BatchNorm + Dropout(0.1) │
+│  → skip₁ (2000, 64)                             │
+│  MaxPool1D(4)  →  (500, 64)                      │
+│                                                  │
+│  Conv1D(128, kernel=5) + BatchNorm + Dropout(0.2)│
+│  → skip₂ (500, 128)                             │
+│  MaxPool1D(4)  →  (125, 128)                     │
+└──────────┬───────────────────────┬───────────────┘
+           │                       │
+           ▼                       ▼
+┌─────────────────────┐ ┌─────────────────────────┐
+│  Seg BiGRU          │ │  Murmur BiGRU           │
+│  Bidirectional      │ │  Bidirectional          │
+│  GRU(128)           │ │  GRU(128)               │
+│  return_sequences   │ │  return_sequences       │
+│  = True             │ │  = False                │
+│  → (125, 256)       │ │  → (256,)               │
+└────────┬────────────┘ └───────────┬─────────────┘
+         │                          │
+         ▼                          ▼
+┌────────────────────────┐ ┌──────────────────────┐
+│  SEG DECODER (U-Net)   │ │  MURMUR HEAD         │
+│                        │ │                      │
+│  UpSample(4) → (500)  │ │  Dense(64, relu)     │
+│  Concat(skip₂)        │ │  Dropout(0.3)        │
+│  Conv1D(64, 5)+BN+DO  │ │  Dense(3, softmax)   │
+│                        │ │  → (3,)              │
+│  UpSample(4) → (2000) │ │   ↓                  │
+│  Concat(skip₁)        │ │  Murmur class:       │
+│  Conv1D(5, 1, softmax)│ │  Present/Absent/     │
+│  → (2000, 5)          │ │  Unknown             │
+│   ↓                   │ └──────────────────────┘
+│  Per-timestep class:  │
+│  S1/S2/Sys/Dia/BG     │
+└────────────────────────┘
+</div>
+
+<p>
+כפי שניתן לראות, ה-Encoder המשותף מעבד את הסיגנל ומפיק ייצוג קומפקטי. מנקודה זו הרשת מתפצלת — כל ראש מקבל שכבת BiGRU עצמאית המתמחה במשימה שלו. ראש הסגמנטציה משתמש ב-Decoder מסוג U-Net אשר מחזיר את הייצוג לאורך המקורי בעזרת skip connections, בעוד ראש האוושה מרכז את הייצוג לווקטור בודד ומסווג ברמת ההקלטה.
+</p>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>2. הסבר על סוגי השכבות השונים ברשת</h2>
+
+<table>
+<tr><th>שכבה</th><th>סוג</th><th>תפקיד</th></tr>
+<tr>
+  <td><code>Conv1D</code></td>
+  <td>Convolutional</td>
+  <td>מחליקה פילטרים לאורך ציר הזמן וחולצת תבניות מקומיות (דופקים, שינויי אמפליטודה). הפילטר הראשון ברוחב 7 לוכד תבניות רחבות, והשני ברוחב 5 תבניות עדינות יותר.</td>
+</tr>
+<tr>
+  <td><code>BatchNormalization</code></td>
+  <td>Normalization</td>
+  <td>מנרמלת כל ערוץ לממוצע ≈0 וסטיית תקן ≈1 לאורך ה-Batch. מייצבת ומאיצה את תהליך האימון על ידי מניעת "סחיפת ערכים פנימית" (Internal Covariate Shift).</td>
+</tr>
+<tr>
+  <td><code>Dropout</code></td>
+  <td>Regularization</td>
+  <td>באופן אקראי מאפסת אחוז מהערכים בכל שלב אימון (10%–30%). מונעת מהרשת להסתמך על נוירונים בודדים ובכך מפחיתה Overfitting.</td>
+</tr>
+<tr>
+  <td><code>MaxPool1D</code></td>
+  <td>Pooling</td>
+  <td>מצמצמת את ציר הזמן פי 4 על ידי בחירת הערך המקסימלי מכל קבוצה של 4 נקודות. מקטינה מימדיות ומרחיבה את שדה הראייה (Receptive Field) של השכבות הבאות.</td>
+</tr>
+<tr>
+  <td><code>Bidirectional GRU</code></td>
+  <td>Recurrent (BiRNN)</td>
+  <td>שכבה רקורנטית דו-כיוונית מסוג GRU (Gated Recurrent Unit). סורקת את הרצף קדימה ואחורה ולומדת תלויות זמניות ארוכות טווח — למשל הקשר בין S1 ל-S2 במחזור דפיקת הלב. נבחרה GRU על פני LSTM בשל מספר פרמטרים נמוך יותר עם ביצועים דומים.</td>
+</tr>
+<tr>
+  <td><code>UpSampling1D</code></td>
+  <td>Upsampling</td>
+  <td>מגדילה בחזרה את ציר הזמן (כפולה של הפקטור). משמשת ב-Decoder של ה-U-Net כדי להחזיר את הייצוג לאורך המקורי.</td>
+</tr>
+<tr>
+  <td><code>Concatenate</code> (Skip Connection)</td>
+  <td>Merge</td>
+  <td>משרשרת את הפלט של שכבת ה-Upsampling עם הפלט השמור מה-Encoder (skip connection). מאפשרת ל-Decoder לשחזר פרטים עדינים שאבדו בתהליך הדחיסה — עיקרון מרכזי בארכיטקטורת U-Net.</td>
+</tr>
+<tr>
+  <td><code>Dense</code></td>
+  <td>Fully Connected</td>
+  <td>שכבה צפופה (כל נוירון מחובר לכל הנוירונים בשכבה הקודמת). משמשת בראש האוושה להמרת הווקטור המסכם לסיווג סופי.</td>
+</tr>
+<tr>
+  <td>Softmax (activation)</td>
+  <td>Activation</td>
+  <td>ממירה את הפלט להתפלגות הסתברותית (סכום = 1). משמשת בשני ראשי הפלט כך שכל מחלקה מקבלת הסתברות, והמחלקה עם ההסתברות הגבוהה ביותר נבחרת כחיזוי.</td>
+</tr>
+<tr>
+  <td>ReLU (activation)</td>
+  <td>Activation</td>
+  <td>
+    <code>f(x) = max(0, x)</code> — מאפסת ערכים שליליים. מוסיפה א-לינאריות לרשת, מה שמאפשר לה ללמוד תבניות מורכבות. ללא פונקציית הפעלה, מספר שכבות ליניאריות שקולות לשכבה אחת.</td>
+</tr>
+</table>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>3. תיאור UML של המחלקות שנכתבו</h2>
+
+<p>בפרויקט נכתבו מספר מחלקות מותאמות אישית (custom classes) ב-Python/Keras עבור מדדי הערכה ופונקציות שגיאה:</p>
+
+<div class="arch-box">
+┌─────────────────────────────────────────────────┐
+│        keras.metrics.Metric  (base class)       │
+└────────────────────┬────────────────────────────┘
+                     │  inherits
+        ┌────────────┴────────────┐
+        ▼                         ▼
+┌──────────────────┐   ┌────────────────────┐
+│   SparseRecall   │   │  SparsePrecision   │
+├──────────────────┤   ├────────────────────┤
+│ - class_id: int  │   │ - class_id: int    │
+│ - tp: Variable   │   │ - tp: Variable     │
+│ - fn: Variable   │   │ - fp: Variable     │
+├──────────────────┤   ├────────────────────┤
+│ + update_state() │   │ + update_state()   │
+│ + result()       │   │ + result()         │
+│ + reset_state()  │   │ + reset_state()    │
+│ + get_config()   │   │ + get_config()     │
+└──────────────────┘   └────────────────────┘
+
+Recall = TP/(TP+FN)     Precision = TP/(TP+FP)
+</div>
+
+<p>
+<strong>SparseRecall</strong> — מטריקה מותאמת אישית המחשבת Recall (רגישות) עבור מחלקה ספציפית. בכל batch היא סופרת True Positives (חיזויים נכונים עבור המחלקה) ו-False Negatives (מקרים שייכים למחלקה אך לא זוהו). הנוסחה: <code>Recall = TP / (TP + FN)</code>. מחלקה זו נדרשת כיוון ש-Keras לא תומך באופן מובנה ב-Recall עבור sparse labels עם פלט softmax רב-מחלקתי.
+</p>
+<p>
+<strong>SparsePrecision</strong> — מטריקה מותאמת אישית המחשבת Precision (דיוק) עבור מחלקה ספציפית. סופרת True Positives ו-False Positives (דגימות שהמודל חזה כמחלקה זו אך בפועל שייכות למחלקה אחרת). הנוסחה: <code>Precision = TP / (TP + FP)</code>.
+</p>
+<p>
+שתי המחלקות יורשות מ-<code>keras.metrics.Metric</code> ומממשות את הממשק הנדרש: <code>update_state</code> לעדכון המונים בכל batch, <code>result</code> לחישוב הערך הסופי, ו-<code>reset_state</code> לאיפוס בתחילת כל epoch.
+</p>
+<p>
+בנוסף, נכתבו שתי פונקציות שגיאה מותאמות: <code>weighted_seg_loss</code> ו-<code>weighted_murmur_loss</code> (ראו פירוט בסעיף פונקציית השגיאה בהמשך).
+</p>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>4. דוחות וגרפים — תוצאות שלב האימון</h2>
+
+<h3>4.1 עקומות אימון (Training Curves) — המודל הסופי (model10)</h3>
+
+<div class="figure-placeholder">
+[Figure: fig_training_curves_normalization_pre_rec_split_regular_model10.png]<br>
+עקומות Loss ו-Accuracy עבור Segmentation ו-Murmur לאורך ה-Epochs, כולל Train ו-Validation.
+</div>
+
+<p>
+המודל אומן על פני 14 epochs עד שמנגנון ה-EarlyStopping עצר את האימון (patience=5 epochs ללא שיפור ב-val_loss). להלן סיכום תוצאות האימון:
+</p>
+
+<table>
+<tr><th>מדד</th><th>Train (epoch 13)</th><th>Validation (best)</th></tr>
+<tr><td>Seg Accuracy</td><td>77.3%</td><td>76.3%</td></tr>
+<tr><td>Seg Loss</td><td>0.658</td><td>0.705</td></tr>
+<tr><td>Murmur Accuracy</td><td>63.7%</td><td>67.9%</td></tr>
+<tr><td>Murmur Recall (Present)</td><td>68.5%</td><td>64.4%</td></tr>
+<tr><td>Murmur Precision (Present)</td><td>68.3%</td><td>68.0%</td></tr>
+<tr><td>Total Loss</td><td>0.731</td><td>0.786</td></tr>
+</table>
+
+<h3>4.2 מטריצות בלבול (Confusion Matrices)</h3>
+
+<div class="figure-placeholder">
+[Figure: fig_confusion_matrix_seg_model10.png]<br>
+מטריצת בלבול מנורמלת עבור הסגמנטציה — 5 מחלקות: Background, S1, Systolic, S2, Diastole.<br>
+כולל Recall (ירוק) ו-Precision (סגול) לכל מחלקה.
+</div>
+
+<div class="figure-placeholder">
+[Figure: fig_murmur_confusion_matrix_murmur_model10.png]<br>
+מטריצת בלבול מנורמלת עבור זיהוי אוושה — 3 מחלקות: Present, Absent, Unknown.
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>5. ריכוז Hyper-Parameters</h2>
+
+<table>
+<tr><th>פרמטר</th><th>ערך</th><th>הסבר</th></tr>
+<tr><td>Batch Size</td><td>64</td><td>כמות הדגימות שהמודל מעבד בכל צעד אימון. ערך גדול יותר מייצב את הגרדיאנטים אך צורך יותר זיכרון GPU.</td></tr>
+<tr><td>Max Epochs</td><td>100</td><td>מספר מעברים מקסימלי על כל הדאטא. בפועל, ה-EarlyStopping עצר הרבה לפני.</td></tr>
+<tr><td>Learning Rate</td><td>1e-3</td><td>גודל הצעד של האופטימייזר. נבחר כערך ברירת מחדל של Adam.</td></tr>
+<tr><td>Optimizer</td><td>Adam (clipnorm=1.0)</td><td>אופטימייזר אדפטיבי המשלב Momentum ו-RMSProp. clipnorm מונע "התפוצצות גרדיאנטים".</td></tr>
+<tr><td>Early Stopping Patience</td><td>5 epochs</td><td>כמות epochs שהמודל ממתין ללא שיפור ב-val_loss לפני עצירה.</td></tr>
+<tr><td>ReduceLR Patience</td><td>2 epochs</td><td>אחרי 2 epochs ללא שיפור, ה-Learning Rate מוכפל ב-0.5.</td></tr>
+<tr><td>Min Learning Rate</td><td>1e-6</td><td>הגבול התחתון של ה-Learning Rate.</td></tr>
+<tr><td>Pool Factor 1</td><td>4</td><td>פקטור הקטנת ציר הזמן בשכבת MaxPool הראשונה: 2000→500.</td></tr>
+<tr><td>Pool Factor 2</td><td>4</td><td>פקטור הקטנת ציר הזמן בשכבת MaxPool השנייה: 500→125.</td></tr>
+<tr><td>Seg Loss Weight</td><td>1.0</td><td>משקל ה-Loss של ראש הסגמנטציה בחישוב ה-Total Loss.</td></tr>
+<tr><td>Murmur Loss Weight</td><td>0.1</td><td>משקל ה-Loss של ראש האוושה. נמוך יותר כדי שמשימת הסגמנטציה תהיה הדומיננטית.</td></tr>
+<tr><td>Encoder Conv1D Filters</td><td>64, 128</td><td>מספר הפילטרים בשכבות ה-Conv1D של ה-Encoder.</td></tr>
+<tr><td>GRU Units</td><td>128 (× 2 = 256 bidirectional)</td><td>מספר היחידות בכל כיוון של ה-BiGRU.</td></tr>
+<tr><td>Dropout Rates</td><td>0.1, 0.2, 0.2, 0.3</td><td>שיעורי Dropout שעולים בהדרגה לעומק הרשת (ויסות חזק יותר בשכבות הגבוהות).</td></tr>
+<tr><td>Recurrent Dropout</td><td>0.2</td><td>Dropout בתוך המצב הפנימי של ה-GRU.</td></tr>
+<tr><td>Segmentation Classes</td><td>5</td><td>Background, S1, Systolic, S2, Diastole.</td></tr>
+<tr><td>Murmur Classes</td><td>3</td><td>Present, Absent, Unknown.</td></tr>
+<tr><td>Input Length</td><td>2,000 timesteps</td><td>2 שניות בקצב דגימה של 1,000 Hz (לאחר Downsampling ×4 מ-4,000 Hz).</td></tr>
+<tr><td>Train/Val/Test Split</td><td>70% / 15% / 15%</td><td>חלוקה לפי מטופלים (GroupShuffleSplit) למניעת Data Leakage.</td></tr>
+</table>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>6. תיעוד השינויים במודל וב-Hyper-Parameters לשיפור תוצאות האימון</h2>
+
+<p>לאורך הפרויקט אומנו 12 גרסאות של המודל. להלן תיעוד של השינויים המרכזיים שבוצעו בכל גרסה והשפעתם:</p>
+
+<table>
+<tr><th>גרסה</th><th>שם</th><th>שינוי עיקרי</th><th>תוצאה/תובנה</th></tr>
+
+<tr>
+  <td>model0</td>
+  <td>מודל בסיס</td>
+  <td>מודל ראשוני — ארכיטקטורת BiGRU עם ראש סגמנטציה בלבד. הקלטות באורך 10 שניות.</td>
+  <td>זמן הרצה ארוך מאוד בגלל הרצפים הארוכים (40,000 נקודות). ביצועים נמוכים.</td>
+</tr>
+
+<tr>
+  <td>model1</td>
+  <td>downsample + reduced overfit</td>
+  <td>הוספת Downsampling והגברת רגולריזציה (Dropout) כדי להקטין Overfitting.</td>
+  <td>שיפור בזמן הרצה. הפחתת הפער בין Train ל-Validation.</td>
+</tr>
+
+<tr>
+  <td>model2</td>
+  <td>downsampled 4x + reduced overfit</td>
+  <td>קיבוע Downsampling לפקטור 4 (מ-8,000 ל-2,000 נקודות לכל הקלטה של 2 שניות).</td>
+  <td>איזון טוב בין מהירות ורזולוציה. שיפור נוסף ב-Overfitting.</td>
+</tr>
+
+<tr>
+  <td>model3–4</td>
+  <td>test set added</td>
+  <td>הוספת קבוצת Test נפרדת (בנוסף ל-Train/Val) כדי להעריך ביצועים על נתונים שלא נצפו כלל.</td>
+  <td>אפשר הערכה אמינה יותר של המודל.</td>
+</tr>
+
+<tr>
+  <td>model5</td>
+  <td>encoder-decoder</td>
+  <td>מעבר לארכיטקטורת Encoder-Decoder (דחיסה ושחזור) במקום BiGRU ישיר על הרצף המלא.</td>
+  <td>שיפור בסגמנטציה — ה-Encoder מצמצם ממדים וה-BiGRU עובד על רצף קצר יותר (125 נקודות).</td>
+</tr>
+
+<tr>
+  <td>model6</td>
+  <td>encoder-decoder + less unrecognized splitting</td>
+  <td>שיטת חיתוך חדשה שמתחילה כל חלון של 2 שניות מנקודה שאינה unrecognized, ומוחקת חלונות עם יותר מ-50% unrecognized.</td>
+  <td>הפחתת רעש בדאטא, אך צמצום משמעותי בכמות ההקלטות.</td>
+</tr>
+
+<tr>
+  <td>model7</td>
+  <td>U-Net + less unrecognized</td>
+  <td>הוספת Skip Connections מסוג U-Net — שרשור הפלט מה-Encoder ישירות ל-Decoder.</td>
+  <td>שיפור משמעותי בסגמנטציה — ה-Skip Connections מאפשרים לשחזר פרטים עדינים שאבדו בדחיסה.</td>
+</tr>
+
+<tr>
+  <td>model8</td>
+  <td>murmur classification head</td>
+  <td>הוספת ראש שני לזיהוי אוושה (Murmur) — הפיכת המודל ל-Dual-Head. שני ראשי BiGRU נפרדים.</td>
+  <td>המודל כעת מבצע שתי משימות במקביל. ה-Shared Encoder מרוויח מלמידה משותפת (Multi-Task Learning).</td>
+</tr>
+
+<tr>
+  <td>model9</td>
+  <td>class weights + murmur weight reduced</td>
+  <td>הוספת Class Weights מאוזנים (balanced) לשתי פונקציות ה-Loss. הפחתת משקל ה-Murmur Loss מ-0.5 ל-0.1.</td>
+  <td>שיפור ב-Recall של מחלקת Present (71.3% train). המשקל הנמוך ל-Murmur מונע מהראש הזה "לחטוף" את האימון מהסגמנטציה. Seg accuracy הגיעה ל-82.3%.</td>
+</tr>
+
+<tr>
+  <td>model10</td>
+  <td>normalization per-recording + regular split</td>
+  <td>שינוי הנורמליזציה לפי מקסימום פרטי של כל הקלטה (במקום מקסימום גלובלי). חזרה לשיטת חיתוך רגילה (מחיקת חלונות שכולם unrecognized בלבד).</td>
+  <td><strong>המודל הסופי.</strong> נורמליזציה פרטית נותנת אחידות טובה יותר. שיטת החיתוך הרגילה שומרת יותר דאטא. Seg acc ≈ 76%, Murmur acc ≈ 68%, Murmur Precision (Present) ≈ 68%.</td>
+</tr>
+
+<tr>
+  <td>model11</td>
+  <td>GRU per head</td>
+  <td>ניסיון נוסף עם אותה ארכיטקטורה — GRU נפרד לכל ראש.</td>
+  <td>ביצועים דומים ל-model10. אימות שה-BiGRU הנפרד אכן תורם.</td>
+</tr>
+</table>
+
+<h3>גרפי עקומות אימון של גרסאות נבחרות</h3>
+
+<div class="figure-placeholder">
+[Figure: fig_training_curves_model0.png]<br>
+model0 — המודל הראשוני.
+</div>
+
+<div class="figure-placeholder">
+[Figure: fig_training_curves_encoder_decoder_model5.png]<br>
+model5 — מעבר לארכיטקטורת Encoder-Decoder.
+</div>
+
+<div class="figure-placeholder">
+[Figure: fig_training_curves_u_net_less_unrecognized_model7.png]<br>
+model7 — הוספת U-Net Skip Connections.
+</div>
+
+<div class="figure-placeholder">
+[Figure: fig_training_curves_less_unrecognized_murmur_cls_model8.png]<br>
+model8 — הוספת ראש זיהוי אוושה (Dual-Head).
+</div>
+
+<div class="figure-placeholder">
+[Figure: fig_training_curves_less_weight_to_murmur_all_classes_weights_new_method_model9.png]<br>
+model9 — Class Weights מאוזנים + משקל מופחת ל-Murmur.
+</div>
+
+<div class="figure-placeholder">
+[Figure: fig_training_curves_normalization_pre_rec_split_regular_model10.png]<br>
+model10 — המודל הסופי. נורמליזציה פרטית + חיתוך רגיל.
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>7. תיעוד והסבר של פונקציית השגיאה (Loss Function)</h2>
+
+<p>
+פונקציית השגיאה הכוללת של המודל מורכבת משתי פונקציות שגיאה — אחת לכל ראש — המשוקללות יחד:
+</p>
+
+<div class="formula">
+Total Loss = SEG_LOSS_WEIGHT × Seg_Loss + MURMUR_LOSS_WEIGHT × Murmur_Loss
+<br>
+Total Loss = 1.0 × Seg_Loss + 0.1 × Murmur_Loss
+</div>
+
+<h3>7.1 Sparse Categorical Cross-Entropy (הבסיס)</h3>
+<p>
+שתי פונקציות השגיאה מבוססות על <strong>Sparse Categorical Cross-Entropy</strong> — פונקציית שגיאה סטנדרטית לסיווג רב-מחלקתי כאשר התוויות הן מספרים שלמים (ולא one-hot vectors). הנוסחה:
+</p>
+<div class="formula">
+Loss(y, ŷ) = −log(ŷ[y])
+</div>
+<p>
+כלומר, עבור כל דגימה, פונקציית השגיאה היא מינוס הלוגריתם של ההסתברות שהמודל הקצה למחלקה הנכונה. אם המודל בטוח בתשובה הנכונה (ŷ[y] קרוב ל-1), ה-Loss קרוב ל-0. אם המודל טועה (ŷ[y] קרוב ל-0), ה-Loss שואף לאינסוף — עונש כבד על טעויות בטוחות.
+</p>
+
+<h3>7.2 שקלול מחלקות (Class Weighting)</h3>
+<p>
+מכיוון שהדאטא-סט אינו מאוזן (למשל, מחלקת Background/Unrecognized שולטת בסגמנטציה, ומחלקת Absent שולטת באוושה), שימוש ב-Cross-Entropy רגיל יגרום למודל "להתעצלן" ולחזות תמיד את המחלקה הנפוצה. לכן, כל דגימה מוכפלת במשקל ההפוך לשכיחות המחלקה שלה:
+</p>
+<div class="formula">
+weight(class_c) = total_samples / (n_classes × count(class_c))
+</div>
+<p>
+כך מחלקות נדירות (כמו Present באוושה) מקבלות משקל גבוה יותר, ומחלקות נפוצות (כמו Absent) מקבלות משקל נמוך — המודל "משלם" יותר על טעות במחלקה נדירה. הממוצע המשוקלל שומר על סקאלת ה-Loss זהה.
+</p>
+
+<h3>7.3 Loss לראש הסגמנטציה (<code>weighted_seg_loss</code>)</h3>
+<p>
+פועלת <strong>ברמת נקודת זמן</strong> — כל אחת מ-2,000 הנקודות בכל הקלטה מקבלת Loss בהתאם למחלקה האמיתית שלה (S1/S2/Systole/Diastole/Background) ומוכפלת במשקל המתאים. ה-Loss הסופי הוא הממוצע על פני כל נקודות הזמן בכל ההקלטות ב-Batch.
+</p>
+
+<h3>7.4 Loss לראש האוושה (<code>weighted_murmur_loss</code>)</h3>
+<p>
+פועלת <strong>ברמת הקלטה</strong> — כל הקלטה מקבלת Loss בהתאם לתווית האמיתית שלה (Present/Absent/Unknown) ומוכפלת במשקל המתאים.
+</p>
+
+<h3>7.5 שקלול בין הראשים</h3>
+<p>
+ה-Loss הכולל משוקלל כך שמשקל ראש הסגמנטציה (<code>1.0</code>) גבוה פי 10 ממשקל ראש האוושה (<code>0.1</code>). הסיבה: הסגמנטציה היא המשימה העיקרית והמורכבת יותר (סיווג 2,000 נקודות), ואילו זיהוי האוושה הוא סיווג ברמת הקלטה. ללא שקלול זה, Loss של האוושה עלול "לחטוף" את כיוון הגרדיאנטים ולפגוע באיכות הסגמנטציה. משקל זה נקבע אמפירית — ב-model9 הורד מ-0.5 ל-0.1 ונצפה שיפור בביצועי הסגמנטציה.
+</p>
+
+
+</body>
+</html>
