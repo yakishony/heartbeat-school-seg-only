@@ -39,8 +39,8 @@ def run():
     dataset_raw, missing = load_dataset()
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
 
-    # 2. Split into fixed length recordings
-    dataset_split = split_data_into_fixed_length_recordings(dataset_raw)
+    # 2. Split into fixed length recordings (less unrecognized)
+    dataset_split = split_data_into_fixed_length_recordings_without_unrecognized(dataset_raw)
     del dataset_raw
     gc.collect()
 

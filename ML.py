@@ -30,11 +30,6 @@ from env import (
 from split_data_into_fixed_length_recordings import SAMPLES_NUM
 
 
-
-_SEG_WEIGHTS_TENSOR = None      # populated in main() after split
-_MURMUR_WEIGHTS_TENSOR = None   # populated in main() after split
-
-
 # Recall = TP / (TP + FN) — "of all actual positives, how many did we catch?"
 # We need a custom class because Keras built-in recall doesn't natively handle
 # sparse labels with multi-class softmax output for a single target class.
@@ -225,6 +220,7 @@ def _balanced_class_weights(counts):
 
 def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES)):
     """Compute 1-proportion weights for segmentation from training labels."""
+    # count the propotions:
     counts = np.zeros(num_classes, dtype=np.float64)
     for rid in rec_ids:
         labels = np.load(DATA_FOR_ML / "labels" / f"{rid}.npy")
@@ -233,11 +229,12 @@ def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES)):
     weights = _balanced_class_weights(counts)
     print("Seg class counts:", dict(enumerate(counts.astype(int))))
     print("Seg class weights:", dict(enumerate(np.round(weights, 3))))
-    return weights
+    return tf.constant(weights, dtype=tf.float32)
 
 
 def compute_murmur_class_weights(rec_ids, num_classes=NUM_MURMUR_CLASSES):
     """Compute balanced weights for murmur from training labels."""
+    # count the propotions:
     counts = np.zeros(num_classes, dtype=np.float64)
     for rid in rec_ids:
         m = np.load(DATA_FOR_ML / "murmurs" / f"{rid}.npy").item()
@@ -245,7 +242,7 @@ def compute_murmur_class_weights(rec_ids, num_classes=NUM_MURMUR_CLASSES):
     weights = _balanced_class_weights(counts)
     print("Murmur class counts:", dict(enumerate(counts.astype(int))))
     print("Murmur class weights:", dict(enumerate(np.round(weights, 3))))
-    return weights
+    return tf.constant(weights, dtype=tf.float32)
 
 
 # ── Model ──
@@ -330,22 +327,13 @@ def build_model(seq_len=SAMPLES_NUM, num_seg_classes=NUM_SEG_CLASSES,
     return Model(inputs=inp, outputs=[seg_out, cls_out])
 
 
-def weighted_murmur_loss(y_true, y_pred):
+def weighted_loss(weights_tensor, y_true, y_pred):
     """Custom loss that penalizes mistakes on rare classes more heavily."""
     # tf.gather: looks up the weight for each sample's true class.
     #   e.g. if y_true=[0, 2, 1] and weights_tensor=[3.0, 1.0, 1.5],
     #   then gather returns [3.0, 1.5, 1.0] — one weight per sample.
     # tf.cast: converts y_true from int64 to int32 (gather requires integer indices).
-    weights = tf.gather(_MURMUR_WEIGHTS_TENSOR, tf.cast(y_true, tf.int32))
-    loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
-    return loss * weights
-
-
-def weighted_seg_loss(y_true, y_pred):
-    """Per-timestep weighted cross-entropy for segmentation."""
-    assert _SEG_WEIGHTS_TENSOR is not None, \
-        "Call compute_seg_class_weights() before using this loss"
-    weights = tf.gather(_SEG_WEIGHTS_TENSOR, tf.cast(y_true, tf.int32))
+    weights = tf.gather(weights_tensor, tf.cast(y_true, tf.int32))
     loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
     return loss * weights
 
@@ -384,34 +372,27 @@ def split_ids():
 
 
 # ── Train ──
-def main(resume_checkpoint: str | None = None):
-    # resume_checkpoint: optional path to a .keras file to continue training from.
-    #   str | None means it's either a string or None (no checkpoint → fresh start).
-
-    global _SEG_WEIGHTS_TENSOR, _MURMUR_WEIGHTS_TENSOR
-
+def main(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
     train_ids, val_ids, test_ids = split_ids()
     print(f"Train: {len(train_ids)}, Val: {len(val_ids)}, Test: {len(test_ids)}")
 
-    _SEG_WEIGHTS_TENSOR = tf.constant(
-        compute_seg_class_weights(train_ids), dtype=tf.float32)
-    _MURMUR_WEIGHTS_TENSOR = tf.constant(
-        compute_murmur_class_weights(train_ids), dtype=tf.float32)
+    # we calculate the weights based on the imbalace of the train data
+    seg_weights_tensor = compute_seg_class_weights(train_ids)
+    murmur_weights_tensor = compute_murmur_class_weights(train_ids)
 
     train_ds = make_tf_dataset(train_ids, BATCH_SIZE, shuffle=True)
     val_ds = make_tf_dataset(val_ids, BATCH_SIZE, shuffle=False)
 
     initial_epoch = 0
-    if resume_checkpoint:
-        # load_model: restores the full model (architecture + weights + optimizer state)
-        # from a saved .keras file, so training continues exactly where it left off.
-        print(f"Resuming from: {resume_checkpoint}")
-        model = keras.models.load_model(resume_checkpoint)
-        # Parse the epoch number from the filename (e.g. "epoch_042.keras" → 42)
-        # so model.fit knows which epoch to start from.
-        initial_epoch = int(Path(resume_checkpoint).stem.split("_")[-1])
-        # The run name is the parent folder name (e.g. "checkpoints/run_v2" → "run_v2")
-        run_name = Path(resume_checkpoint).parent.name
+    if resume_checkpoint_path: # if we are resuming training from a checkpoint
+        print(f"Loading model from: {resume_checkpoint_path}")
+        model = keras.models.load_model(resume_checkpoint_path)
+        if from_scratch: # if we are training from scratch
+            initial_epoch = 0
+            run_name = input("Enter a name for this training run: ").strip()
+        else: # if we are resuming training from a certain epoch
+            initial_epoch = int(Path(resume_checkpoint_path).stem.split("_")[-1])
+            run_name = Path(resume_checkpoint_path).parent.name
     else:
         model = build_model()
         # compile: configures the model for training by specifying:
@@ -425,12 +406,12 @@ def main(resume_checkpoint: str | None = None):
             # loss: which loss function to use for each output head.
             # Keys "seg" and "murmur" match the layer names in the model.
             loss={
-                "seg": weighted_seg_loss,
-                "murmur": weighted_murmur_loss,
+                "seg": weighted_loss(seg_weights_tensor),
+                "murmur": weighted_loss(murmur_weights_tensor),
             },
             # loss_weights: how much each head's loss contributes to the total.
             # total_loss = 1.0 * seg_loss + 0.5 * murmur_loss
-            loss_weights={"seg": SEG_LOSS_WEIGHT, "murmur": MURMUR_LOSS_WEIGHT},
+            loss_weights={"seg": SEG_LOSS_WEIGHT, "murmur": MURMUR_LOSS_WEIGHT}, # weights of each classifiaction in the multi-task loss
             # metrics: quantities to track during training (don't affect optimization,
             # just printed/logged so you can monitor performance).
             metrics={
@@ -462,7 +443,7 @@ def main(resume_checkpoint: str | None = None):
     callbacks = [
         # CSVLogger: writes loss and metric values to a CSV file after each epoch.
         # append=True when resuming so we don't overwrite previous epochs' data.
-        keras.callbacks.CSVLogger(str(metrics_csv), append=(initial_epoch > 0)),
+        keras.callbacks.CSVLogger(str(metrics_csv), append=(initial_epoch > 0)), # append=True when resuming so we don't overwrite previous epochs' data.
         # ModelCheckpoint (every epoch): saves the full model after each epoch.
         # {epoch:03d} formats the epoch number with 3 digits (e.g. epoch_007.keras).
         keras.callbacks.ModelCheckpoint(
@@ -514,7 +495,8 @@ def main(resume_checkpoint: str | None = None):
     test_ds = make_tf_dataset(test_ids, BATCH_SIZE, shuffle=False)
     # model.evaluate: runs a forward pass on every test batch and computes loss + metrics.
     # return_dict=True: returns results as a dict {metric_name: value} instead of a list.
-    results = model.evaluate(test_ds, return_dict=True)
+    results = model.evaluate(test_ds, return_dict=True) # note that if the model ran all 
+    # the way to EPOCHS num, it will return the results of the last epoch - not necessarily the best one
     for k, v in results.items():
         print(f"  {k}: {v:.4f}")
     # plot confusion matrix of both murmur classes and segmentation classes
@@ -524,12 +506,8 @@ def main(resume_checkpoint: str | None = None):
 
 
 
-# This block runs only when the script is executed directly (not imported as a module).
 if __name__ == "__main__":
-    # argparse: parses command-line flags. Here we define one optional flag: --resume.
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--resume", type=str, default=None,
-                        help="Path to checkpoint to resume from")
-    # parse_args: reads sys.argv and returns a namespace object with the flag values.
-    args = parser.parse_args()
-    main(resume_checkpoint=args.resume)
+    # To train fresh:          main()
+    # To resume training:      main(resume_checkpoint="checkpoints/<run>/epoch_NNN.keras")
+    # To reload & retrain:     main(resume_checkpoint="checkpoints/<run>/epoch_NNN.keras", from_scratch=True)
+    main()
