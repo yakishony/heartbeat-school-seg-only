@@ -12,8 +12,63 @@ from ML import load_all_ids
 from utils.plot_utils import LABEL_COLORS, LABEL_NAMES
 CHECKPOINT = "checkpoints/normalization_pre_rec_split_regular_model10/best.keras"
 
+
+def plot_training_curves(history, save_path=None):
+    h = history.history
+    epochs = list(range(1, len(h["loss"]) + 1))
+
+    is_multi = "seg_accuracy" in h
+
+    if is_multi:
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+
+        axes[0, 0].plot(epochs, h["seg_accuracy"], 'o-', label='Train')
+        axes[0, 0].plot(epochs, h["val_seg_accuracy"], 'o-', label='Val')
+        axes[0, 0].set_title('Segmentation Accuracy')
+
+        axes[0, 1].plot(epochs, h["seg_loss"], 'o-', label='Train')
+        axes[0, 1].plot(epochs, h["val_seg_loss"], 'o-', label='Val')
+        axes[0, 1].set_title('Segmentation Loss')
+
+        axes[0, 2].axis('off')
+
+        axes[1, 0].plot(epochs, h["murmur_accuracy"], 'o-', label='Train')
+        axes[1, 0].plot(epochs, h["val_murmur_accuracy"], 'o-', label='Val')
+        axes[1, 0].set_title('Murmur Accuracy')
+
+        axes[1, 1].plot(epochs, h["murmur_loss"], 'o-', label='Train')
+        axes[1, 1].plot(epochs, h["val_murmur_loss"], 'o-', label='Val')
+        axes[1, 1].set_title('Murmur Loss')
+
+        axes[1, 2].plot(epochs, h["murmur_recall_present"], 'o-', label='Train Recall')
+        axes[1, 2].plot(epochs, h["val_murmur_recall_present"], 'o-', label='Val Recall')
+        axes[1, 2].plot(epochs, h["murmur_precision_present"], 's--', label='Train Precision')
+        axes[1, 2].plot(epochs, h["val_murmur_precision_present"], 's--', label='Val Precision')
+        axes[1, 2].set_title('Murmur Present: Recall & Precision')
+
+        for ax in axes.flat:
+            ax.set_xlabel('Epoch')
+            if ax.get_legend_handles_labels()[1]:
+                ax.legend()
+            ax.grid(True)
+    else:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        ax1.plot(epochs, h["accuracy"], 'o-', label='Train')
+        ax1.plot(epochs, h["val_accuracy"], 'o-', label='Val')
+        ax1.set_title('Accuracy'); ax1.legend(); ax1.grid(True)
+
+        ax2.plot(epochs, h["loss"], 'o-', label='Train')
+        ax2.plot(epochs, h["val_loss"], 'o-', label='Val')
+        ax2.set_title('Loss'); ax2.legend(); ax2.grid(True)
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+    plt.show()
+
+
 def annotate_precision_recall(ax, cm):
-    """Add per-class recall (right of rows) and precision (below columns)."""
+    """Add per-class recall (right of rows), precision (below columns) and accuracy (bottom right) to confusion matrix."""
     n = cm.shape[0]
     recall = np.diag(cm) / cm.sum(axis=1).clip(min=1)
     precision = np.diag(cm) / cm.sum(axis=0).clip(min=1)
@@ -126,36 +181,6 @@ def plot_murmur_confusion_matrix(model, batch_size=128):
 
 def main():
     model = keras.models.load_model(CHECKPOINT, compile=False)
-    # print(f"Loaded model from {CHECKPOINT}")
-
-    # all_ids = load_all_ids()
-    # _, val_ids = train_test_split(all_ids, test_size=VAL_SPLIT, random_state=42)
-
-    # rng = np.random.default_rng(SEED)
-    # sample_ids = rng.choice(val_ids, size=N_SAMPLES, replace=False)
-
-    # fig, axes = plt.subplots(N_SAMPLES, 1, figsize=(16, 3 * N_SAMPLES), sharex=True)
-
-    # for i, rec_id in enumerate(sample_ids):
-    #     signal = np.load(DATA_FOR_ML / "signals" / f"{rec_id}.npy")
-    #     y_true = np.load(DATA_FOR_ML / "labels" / f"{rec_id}.npy")
-
-    #     pred = model.predict(signal.reshape(1, -1, 1), verbose=0)
-    #     y_pred = pred.argmax(axis=-1).squeeze()
-
-    #     plot_truth_and_pred(axes[i], signal, y_true, y_pred, RATE_DS, rec_id)
-
-    # handles, labels = axes[0].get_legend_handles_labels()
-    # fig.legend(handles, labels, loc="upper center", ncol=5, markerscale=8, fontsize=9)
-    # axes[-1].set_xlabel("Time (s)")
-    # fig.suptitle("Ground Truth (top) vs Prediction (bottom)", fontsize=13, y=1.01)
-    # fig.tight_layout(rect=[0, 0, 1, 0.97])
-
-    # out = FIGURES_DIR / "fig_predictions.png"
-    # fig.savefig(out, dpi=150, bbox_inches="tight")
-    # print(f"Saved {out}")
-    # plt.show()
-
     # Confusion matrices on all data
     plot_confusion_matrix(model)
     plot_murmur_confusion_matrix(model)
