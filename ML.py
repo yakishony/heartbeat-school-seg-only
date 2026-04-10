@@ -1,13 +1,3 @@
-"""
-Conv1D-BiGRU dual-head model for PCG (phonocardiogram = heart sound) analysis.
-Head 1 (seg):    per-sample segmentation — classifies each time-step as one of
-                 5 classes: S1 / S2 / systole / diastole / background.
-Head 2 (murmur): recording-level murmur classification — one label per whole
-                 recording: Present / Absent / Unknown.
-Architecture: shared CNN encoder → separate BiGRU per head → U-Net decoder (seg) / Dense (murmur)
-"""
-# argparse: parses command-line arguments (e.g. --resume flag)
-import argparse
 # Path: object-oriented filesystem paths (e.g. Path("a") / "b" → "a/b")
 from pathlib import Path
 # numpy: numerical array library used for loading .npy files
@@ -23,12 +13,10 @@ from keras import layers, Model
 # so the model is never tested on data from a patient it trained on.
 from sklearn.model_selection import GroupShuffleSplit
 
-from evaluate_model import plot_training_curves
 from env import (
     DATA_FOR_ML, CLASSES, NUM_MURMUR_CLASSES,
 )
 from split_data_into_fixed_length_recordings import SAMPLES_NUM
-
 
 # Recall = TP / (TP + FN) — "of all actual positives, how many did we catch?"
 # We need a custom class because Keras built-in recall doesn't natively handle
@@ -105,33 +93,21 @@ class SparsePrecision(keras.metrics.Metric):
 
 
 # ── Hyperparameters ──
-# (All tunable knobs that control model size, training speed, and behavior.)
-
-# How many segmentation classes the model outputs per time-step (5: S1, S2, systole, diastole, background)
 NUM_SEG_CLASSES = len(CLASSES)
-# How many samples the model sees in one forward/backward pass.
-# Larger = faster & smoother gradients but uses more GPU memory.
+
 BATCH_SIZE = 64
-# Maximum number of passes through the full training set.
-# Training may stop earlier via EarlyStopping if validation loss plateaus.
 EPOCHS = 100
-# How many epochs to wait with no val_loss improvement before stopping training early.
 EARLY_STOPPING_PATIENCE = 5
-# Step size for the Adam optimizer — how much to adjust weights per gradient step.
-# Too high = unstable training; too low = very slow convergence.
 LEARNING_RATE = 1e-3
-# Downsampling factors in the encoder. The signal starts at 2000 time-steps:
 POOL_1 = 4        
 POOL_2 = 4         
-# How much each head's loss contributes to the total loss the optimizer minimizes.
-# total_loss = SEG_LOSS_WEIGHT * seg_loss + MURMUR_LOSS_WEIGHT * murmur_loss
 SEG_LOSS_WEIGHT = 1.0
 MURMUR_LOSS_WEIGHT = 0.1
 
 
 # ── Data loading ──
 # Overall flow: scan directory for rec IDs → split into train/val/test →
-#   build a tf.data.Dataset that lazily loads .npy files one at a time.
+#  build a tf.data.Dataset that lazily loads .npy files one at a time.
 
 def load_all_ids():
     """Return a sorted list of all recording ID strings available on disk."""
@@ -185,7 +161,19 @@ def load_triplet_wrapper(rec_id):
     return signal, {"seg": seg_label, "murmur": murmur}
 
 
-def make_tf_dataset(rec_ids, batch_size=BATCH_SIZE, shuffle=True):
+def load_pair_wrapper(rec_id):
+    """Like load_triplet_wrapper but returns (signal, seg_label) only — no murmur."""
+    signal, seg_label, _ = tf.py_function(
+        _load_triplet,
+        [rec_id],
+        [tf.float32, tf.int64, tf.int64],
+    )
+    signal.set_shape([SAMPLES_NUM, 1])
+    seg_label.set_shape([SAMPLES_NUM])
+    return signal, seg_label
+
+
+def make_tf_dataset(rec_ids, batch_size=BATCH_SIZE, shuffle=True, seg_only=False):
     # from_tensor_slices: takes a list and creates a dataset that yields one element at a time.
     # Here each element is a single rec_id string (e.g. "rec_001").
     ds = tf.data.Dataset.from_tensor_slices(rec_ids)
@@ -200,7 +188,8 @@ def make_tf_dataset(rec_ids, batch_size=BATCH_SIZE, shuffle=True):
     #   into a (signal, {seg_label, murmur}) tuple by loading the .npy files.
     # num_parallel_calls=AUTOTUNE: lets TF decide how many elements to process
     #   in parallel (using multiple CPU threads) for speed.
-    ds = ds.map(load_triplet_wrapper, num_parallel_calls=tf.data.AUTOTUNE)
+    loader = load_pair_wrapper if seg_only else load_triplet_wrapper
+    ds = ds.map(loader, num_parallel_calls=tf.data.AUTOTUNE)
     # batch: collects individual samples into groups of batch_size,
     #   so the model receives e.g. 64 samples at once per training step.
     # prefetch: loads the next batch in the background while the GPU trains
@@ -245,97 +234,13 @@ def compute_murmur_class_weights(rec_ids, num_classes=NUM_MURMUR_CLASSES):
     return tf.constant(weights, dtype=tf.float32)
 
 
-# ── Model ──
-# Builds a dual-head neural network:
-#   1. Shared encoder (CNN + BiGRU) compresses the signal into a compact representation.
-#   2. Segmentation head (decoder) upsamples back to original length → per-time-step class.
-#   3. Murmur head pools the representation into a single vector → recording-level class.
-def build_model(seq_len=SAMPLES_NUM, num_seg_classes=NUM_SEG_CLASSES,
-                num_murmur_classes=NUM_MURMUR_CLASSES):
-    # Input: one 1-D signal of shape (2000 time-steps, 1 channel).
-    inp = layers.Input(shape=(seq_len, 1))
-
-    # ── Shared encoder block 1 ──
-    # Conv1D(64, 7): slides 64 learnable filters of width 7 across the time axis.
-    #   Each filter detects a different local pattern in the signal.
-    #   64 = number of filters (output channels); 7 = filter width (how many time-steps it sees at once).
-    #   padding="same": pads the input so output length = input length (no shrinking).
-    #   activation="relu": sets negative values to 0 — adds non-linearity so the network
-    #     can learn complex patterns (without it, stacking layers would be no better than one layer).
-    x = layers.Conv1D(64, 7, padding="same", activation="relu")(inp)
-    # BatchNormalization: normalizes each channel to mean≈0, std≈1 across the batch.
-    #   Stabilizes and speeds up training by preventing internal value drift.
-    x = layers.BatchNormalization()(x)
-    # Dropout(0.1): during training, randomly zeroes 10% of values each step.
-    #   Forces the network to not rely on any single feature → reduces overfitting.
-    x = layers.Dropout(0.1)(x)
-    # Save this tensor as a "skip connection" for the decoder (U-Net pattern).
-    # The decoder will concatenate this with its upsampled output to recover
-    # fine-grained details lost during downsampling.
-    skip1 = x                                        # (2000, 64)
-    # MaxPool1D: takes every group of POOL_1=4 consecutive values and keeps only the max.
-    #   Shrinks the time axis by 4× → reduces computation and widens the receptive field
-    #   (each subsequent filter "sees" a larger portion of the original signal).
-    x = layers.MaxPool1D(pool_size=POOL_1)(x)        # (500, 64)
-
-    # ── Shared encoder block 2 ── (same idea, deeper features)
-    # 128 filters of width 5 — more filters to capture more complex patterns.
-    x = layers.Conv1D(128, 5, padding="same", activation="relu")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(0.2)(x)
-    skip2 = x                                        # (500, 128)
-    x = layers.MaxPool1D(pool_size=POOL_2)(x)        # (125, 128)
-
-    # ── Separate BiGRU per head ──
-    # Each head gets its own BiGRU so it can learn temporal patterns
-    # specialized for its task (per-step segmentation vs. global murmur).
-
-    # Seg BiGRU: return_sequences=True — outputs at every time-step for the decoder.
-    seg_gru = layers.Bidirectional(
-        layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2),
-        name="seg_bigru",
-    )(x)                                                # (125, 256)
-
-    # Murmur BiGRU: return_sequences=False — outputs a single summary vector.
-    mur_gru = layers.Bidirectional(
-        layers.GRU(128, return_sequences=False, dropout=0.2, recurrent_dropout=0.2),
-        name="mur_bigru",
-    )(x)                                                # (256,)
-
-    # ── Head 1: Segmentation decoder (U-Net style) ──
-    seg = layers.UpSampling1D(size=POOL_2)(seg_gru)     # (500, 256)
-    seg = layers.Concatenate()([seg, skip2])             # (500, 384)
-    seg = layers.Conv1D(64, 5, padding="same", activation="relu")(seg)
-    seg = layers.BatchNormalization()(seg)
-    seg = layers.Dropout(0.2)(seg)
-
-    seg = layers.UpSampling1D(size=POOL_1)(seg)          # (2000, 64)
-    seg = layers.Concatenate()([seg, skip1])              # (2000, 128)
-    seg_out = layers.Conv1D(
-        num_seg_classes, 1, activation="softmax", name="seg"
-    )(seg)                                                # (2000, 5)
-
-    # ── Head 2: Murmur classification ──
-    # mur_gru is already a single vector (256,), no pooling needed.
-    cls = layers.Dense(64, activation="relu")(mur_gru)
-    cls = layers.Dropout(0.3)(cls)
-    cls_out = layers.Dense(
-        num_murmur_classes, activation="softmax", name="murmur"
-    )(cls)                                                # (3,)
-
-    # Model: wires together the input and both output heads into a single trainable object.
-    return Model(inputs=inp, outputs=[seg_out, cls_out])
-
-
-def weighted_loss(weights_tensor, y_true, y_pred):
-    """Custom loss that penalizes mistakes on rare classes more heavily."""
-    # tf.gather: looks up the weight for each sample's true class.
-    #   e.g. if y_true=[0, 2, 1] and weights_tensor=[3.0, 1.0, 1.5],
-    #   then gather returns [3.0, 1.5, 1.0] — one weight per sample.
-    # tf.cast: converts y_true from int64 to int32 (gather requires integer indices).
-    weights = tf.gather(weights_tensor, tf.cast(y_true, tf.int32))
-    loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
-    return loss * weights
+def weighted_loss(weights_tensor):
+    """Returns a named loss function that penalizes mistakes on rare classes more heavily."""
+    def loss_fn(y_true, y_pred):
+        weights = tf.gather(weights_tensor, tf.cast(y_true, tf.int32))
+        loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
+        return loss * weights
+    return loss_fn
 
 
 def split_ids():
@@ -370,9 +275,48 @@ def split_ids():
 
     return train_ids, val_ids, test_ids
 
+# ── Model ──
+def build_model(seq_len=SAMPLES_NUM, num_seg_classes=NUM_SEG_CLASSES):
+    inp = layers.Input(shape=(seq_len, 1))
+
+    # ── Encoder block 1 ──
+    x = layers.Conv1D(64, 7, padding="same", activation="relu")(inp)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.1)(x)
+    skip1 = x                                        # (4000, 64)
+    x = layers.MaxPool1D(pool_size=POOL_1)(x)        # (1000, 64)
+
+    # ── Encoder block 2 ──
+    x = layers.Conv1D(128, 5, padding="same", activation="relu")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.2)(x)
+    skip2 = x                                        # (1000, 128)
+    x = layers.MaxPool1D(pool_size=POOL_2)(x)        # (250, 128)
+
+    # ── Bottleneck: single BiGRU ──
+    x = layers.Bidirectional(
+        layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2),
+    )(x)                                              # (250, 256)
+
+    # ── Decoder block 1 ──
+    x = layers.UpSampling1D(size=POOL_2)(x)           # (1000, 256)
+    x = layers.Concatenate()([x, skip2])               # (1000, 384)
+    x = layers.Conv1D(64, 5, padding="same", activation="relu")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.2)(x)
+
+    # ── Decoder block 2 ──
+    x = layers.UpSampling1D(size=POOL_1)(x)            # (4000, 64)
+    x = layers.Concatenate()([x, skip1])                # (4000, 128)
+    seg_out = layers.Conv1D(
+        num_seg_classes, 1, activation="softmax", name="seg"
+    )(x)                                                # (4000, 5)
+
+    return Model(inputs=inp, outputs=seg_out)
+
 
 # ── Train ──
-def main(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
+def main_with_murmur(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
     train_ids, val_ids, test_ids = split_ids()
     print(f"Train: {len(train_ids)}, Val: {len(val_ids)}, Test: {len(test_ids)}")
 
@@ -488,6 +432,7 @@ def main(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
     )
 
     # Plot loss and metric curves over epochs and save to a PNG file.
+    from visualize_model import plot_training_curves
     plot_training_curves(history, save_path=f"figures/fig_training_curves_{run_name}.png")
 
     # ── Test evaluation ──
@@ -500,14 +445,71 @@ def main(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
     for k, v in results.items():
         print(f"  {k}: {v:.4f}")
     # plot confusion matrix of both murmur classes and segmentation classes
-    from visualize_model_predictions import plot_confusion_matrix, plot_murmur_confusion_matrix
+    from visualize_model import plot_confusion_matrix, plot_murmur_confusion_matrix
     plot_confusion_matrix(model)
     plot_murmur_confusion_matrix(model)
 
+def main_only_seg(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
+    train_ids, val_ids, test_ids = split_ids()
+    print(f"Train: {len(train_ids)}, Val: {len(val_ids)}, Test: {len(test_ids)}")
+    train_ds = make_tf_dataset(train_ids, BATCH_SIZE, shuffle=True, seg_only=True)
+    val_ds = make_tf_dataset(val_ids, BATCH_SIZE, shuffle=False, seg_only=True)
+    test_ds = make_tf_dataset(test_ids, BATCH_SIZE, shuffle=False, seg_only=True)
+    seg_weights_tensor = compute_seg_class_weights(train_ids)
 
+    initial_epoch = 0
+    if resume_checkpoint_path:
+        print(f"Loading model from: {resume_checkpoint_path}")
+        model = keras.models.load_model(resume_checkpoint_path)
+        if from_scratch:
+            initial_epoch = 0
+            run_name = input("Enter a name for this training run: ").strip()
+        else:
+            initial_epoch = int(Path(resume_checkpoint_path).stem.split("_")[-1])
+            run_name = Path(resume_checkpoint_path).parent.name
+    else:
+        model = build_model()
+        run_name = input("Enter a name for this training run: ").strip()
+
+        model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0), 
+            loss=weighted_loss(seg_weights_tensor),
+            metrics=["accuracy"]
+        )
+    model.summary()
+
+    checkpoint_dir = DATA_FOR_ML.parent / "checkpoints" / run_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints → {checkpoint_dir} (resuming from epoch {initial_epoch})")
+    metrics_csv = checkpoint_dir / "metrics.csv"
+    callbacks = [
+        keras.callbacks.CSVLogger(str(metrics_csv), append=(initial_epoch > 0)),
+        keras.callbacks.ModelCheckpoint(filepath=str(checkpoint_dir / "epoch_{epoch:03d}.keras"), save_freq="epoch"),
+        keras.callbacks.ModelCheckpoint(filepath=str(checkpoint_dir / "best.keras"), monitor="val_loss", save_best_only=True, verbose=1),
+        keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6, verbose=1),
+        keras.callbacks.EarlyStopping(monitor="val_loss", patience=EARLY_STOPPING_PATIENCE, restore_best_weights=True, verbose=1),
+    ]
+    history = model.fit(
+        train_ds,
+        validation_data=val_ds,
+        epochs=EPOCHS,
+        initial_epoch=initial_epoch,
+        callbacks=callbacks,
+    )
+
+    from visualize_model import plot_training_curves
+    plot_training_curves(history, save_path=f"figures/fig_training_curves_{run_name}.png")
+    test_ds = make_tf_dataset(test_ids, BATCH_SIZE, shuffle=False)
+    results = model.evaluate(test_ds, return_dict=True) # note that if the model ran all 
+    # the way to EPOCHS num, it will return the results of the last epoch - not necessarily the best one
+    for k, v in results.items():
+        print(f"  {k}: {v:.4f}")
+    # plot confusion matrix 
+    from visualize_model import plot_confusion_matrix
+    plot_confusion_matrix(model)
 
 if __name__ == "__main__":
     # To train fresh:          main()
     # To resume training:      main(resume_checkpoint="checkpoints/<run>/epoch_NNN.keras")
     # To reload & retrain:     main(resume_checkpoint="checkpoints/<run>/epoch_NNN.keras", from_scratch=True)
-    main()
+    main_only_seg()
