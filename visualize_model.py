@@ -4,6 +4,7 @@ Load a trained checkpoint, predict on validation samples, plot ground-truth vs p
 import numpy as np
 import keras
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
@@ -50,16 +51,22 @@ def plot_training_curves(history, save_path=None):
             ax.set_xlabel('Epoch')
             if ax.get_legend_handles_labels()[1]:
                 ax.legend()
-            ax.grid(True)
+            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator(10))
+            ax.grid(True, which='major')
+            ax.grid(True, which='minor', alpha=0.3)
     else:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         ax1.plot(epochs, h["accuracy"], 'o-', label='Train')
         ax1.plot(epochs, h["val_accuracy"], 'o-', label='Val')
-        ax1.set_title('Accuracy'); ax1.legend(); ax1.grid(True)
+        ax1.set_title('Accuracy'); ax1.legend()
+        ax1.yaxis.set_minor_locator(ticker.AutoMinorLocator(10))
+        ax1.grid(True, which='major'); ax1.grid(True, which='minor', alpha=0.3)
 
         ax2.plot(epochs, h["loss"], 'o-', label='Train')
         ax2.plot(epochs, h["val_loss"], 'o-', label='Val')
-        ax2.set_title('Loss'); ax2.legend(); ax2.grid(True)
+        ax2.set_title('Loss'); ax2.legend()
+        ax2.yaxis.set_minor_locator(ticker.AutoMinorLocator(10))
+        ax2.grid(True, which='major'); ax2.grid(True, which='minor', alpha=0.3)
 
     plt.tight_layout()
     if save_path:
