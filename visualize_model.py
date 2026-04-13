@@ -116,11 +116,26 @@ def plot_truth_and_pred(ax, signal, y_true, y_pred, sr, rec_id):
     ax.tick_params(labelsize=7)
 
 
+SPLIT_NAMES = ("all", "train", "val", "test")
 
-def plot_confusion_matrix(model, batch_size=128):
-    name = input("Enter a name for the confusion matrix figure: ")
-    all_ids = load_all_ids()
-    print(f"Predicting on {len(all_ids)} recordings...")
+def _get_ids_for_split(data_path, split):
+    if split == "all":
+        return load_all_ids(data_path)
+    train_ids, val_ids, test_ids = split_ids()
+    split_map = {"train": train_ids, "val": val_ids, "test": test_ids}
+    parts = split.split("+") if "+" in split else [split]
+    ids = []
+    for p in parts:
+        assert p in split_map, f"unknown split '{p}', use train/val/test/all"
+        ids.extend(split_map[p])
+    return ids
+
+
+def plot_confusion_matrix(model, data_path, name=None, split="all", batch_size=BATCH_SIZE):
+    if name is None:
+        name = input("Enter a name for the confusion matrix figure: ")
+    ids = _get_ids_for_split(data_path, split)
+    print(f"Predicting on {len(ids)} recordings (split={split})...")
     all_true, all_pred = [], []
     for i in range(0, len(all_ids), batch_size):
         batch_ids = all_ids[i:i + batch_size]
@@ -131,7 +146,7 @@ def plot_confusion_matrix(model, batch_size=128):
         preds = seg_preds.argmax(axis=-1)
         all_true.append(np.concatenate(labels))
         all_pred.append(preds.ravel())
-        print(f"  {min(i + batch_size, len(all_ids))}/{len(all_ids)}")
+        print(f"  {min(i + batch_size, len(ids))}/{len(ids)}")
     all_true = np.concatenate(all_true)
     all_pred = np.concatenate(all_pred)
 
@@ -141,30 +156,31 @@ def plot_confusion_matrix(model, batch_size=128):
     disp = ConfusionMatrixDisplay(cm_norm, display_labels=CATEGORY_NAMES)
     disp.plot(cmap="Blues", values_format=".2f", colorbar=False)
     annotate_precision_recall(disp.ax_, cm)
-    disp.ax_.set_title(f"Normalized Confusion Matrix — {name}", fontsize=13)
+    disp.ax_.set_title(f"Normalized Confusion Matrix — {name} [{split}]", fontsize=13)
     disp.figure_.set_size_inches(8, 5.5)
     disp.figure_.tight_layout()
 
-    out = FIGURES_DIR / f"fig_confusion_matrix_{name}.png"
+    out = FIGURES_DIR / f"fig_confusion_matrix_{name}_{split}.png"
     disp.figure_.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Saved {out}")
     plt.show()
 
 
-def plot_murmur_confusion_matrix(model, batch_size=128):
-    name = input("Enter a name for the murmur confusion matrix figure: ")
-    all_ids = load_all_ids()
-    print(f"Predicting murmur on {len(all_ids)} recordings...")
+def plot_murmur_confusion_matrix(model, data_path, name=None, split="all", batch_size=BATCH_SIZE):
+    if name is None:
+        name = input("Enter a name for murmur confusion matrix figure: ")
+    ids = _get_ids_for_split(data_path, split)
+    print(f"Predicting murmur on {len(ids)} recordings (split={split})...")
     all_true, all_pred = [], []
-    for i in range(0, len(all_ids), batch_size):
-        batch_ids = all_ids[i:i + batch_size]
-        signals = [np.load(DATA_FOR_ML / "signals" / f"{rid}.npy") for rid in batch_ids]
-        murmurs = [np.load(DATA_FOR_ML / "murmurs" / f"{rid}.npy") for rid in batch_ids]
+    for i in range(0, len(ids), batch_size):
+        batch_ids = ids[i:i + batch_size]
+        signals = [np.load(data_path / "signals" / f"{rid}.npy") for rid in batch_ids]
+        murmurs = [np.load(data_path / "murmurs" / f"{rid}.npy") for rid in batch_ids]
         X = np.stack(signals)[..., np.newaxis]
         _, murmur_preds = model.predict(X, verbose=0)
         all_true.append(np.array(murmurs))
         all_pred.append(murmur_preds.argmax(axis=-1))
-        print(f"  {min(i + batch_size, len(all_ids))}/{len(all_ids)}")
+        print(f"  {min(i + batch_size, len(ids))}/{len(ids)}")
     all_true = np.concatenate(all_true)
     all_pred = np.concatenate(all_pred)
 
@@ -174,11 +190,12 @@ def plot_murmur_confusion_matrix(model, batch_size=128):
     disp = ConfusionMatrixDisplay(cm_norm, display_labels=MURMUR_NAMES)
     disp.plot(cmap="Oranges", values_format=".2f", colorbar=False)
     annotate_precision_recall(disp.ax_, cm)
-    disp.ax_.set_title(f"Normalized Confusion Matrix — Murmur ({name})", fontsize=13)
+    split_label = f" [{split}]" if split != "all" else ""
+    disp.ax_.set_title(f"Normalized Confusion Matrix — Murmur ({name}){split_label}", fontsize=13)
     disp.figure_.set_size_inches(7, 4.5)
     disp.figure_.tight_layout()
 
-    out = FIGURES_DIR / f"fig_murmur_confusion_matrix_{name}.png"
+    out = FIGURES_DIR / f"fig_murmur_confusion_matrix_{name}_{split}.png"
     disp.figure_.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Saved {out}")
     plt.show()
