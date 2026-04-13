@@ -1,8 +1,8 @@
 data_raw/
 data_raw.pickle
-data_for_ml/
-downsampled_data_for_ml/
+DATA_FOR_ML_X2/
 downsampled_4x_data_for_ml/
+downsampled_2x_data_for_ml/
 figures/
 checkpoints/
 *.pyc

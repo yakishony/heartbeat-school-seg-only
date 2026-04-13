@@ -2,7 +2,7 @@ import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES, DATA_FOR_ML
+from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES, DATA_FOR_ML_X2
 from get_data import load_dataset
 from utils.plot_utils import plot_recording
 from utils.data_utils import dataset_to_summary_df
@@ -124,7 +124,7 @@ def plot_global_vs_good_max(dataset):
 def plot_unrecognized_by_timestamp():
     """For each timestamp, plot the % of recordings labeled 'unrecognized' (class 0)."""
     
-    label_dir = DATA_FOR_ML / "labels"
+    label_dir = DATA_FOR_ML_X2 / "labels"
     label_files = sorted(label_dir.glob("*.npy"))
 
     labels = np.stack([np.load(f) for f in label_files])  # (n_recordings, n_timestamps)
@@ -143,7 +143,7 @@ def plot_unrecognized_by_timestamp():
 
 def print_tail_middele_and_head_unrecognized_precentage_from_recordings():
     """Print the percentage of unrecognized labels at the tail, middle, and head of each recording."""
-    label_dir = DATA_FOR_ML / "labels"
+    label_dir = DATA_FOR_ML_X2 / "labels"
     label_files = sorted(label_dir.glob("*.npy"))
     recordings_labels = np.stack([np.load(f) for f in label_files])  # (n_recordings, n_timestamps)
     counts = np.zeros(3)
