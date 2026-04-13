@@ -8,8 +8,8 @@ import matplotlib.ticker as ticker
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from env import DATA_FOR_ML, FIGURES_DIR, RATE_DS, CATEGORY_NAMES, MURMUR_NAMES
-from ML import load_all_ids
+from env import DATA_FOR_ML_X4, FIGURES_DIR, CATEGORY_NAMES, MURMUR_NAMES
+from ML import BATCH_SIZE, load_all_ids, split_ids
 from utils.plot_utils import LABEL_COLORS, LABEL_NAMES
 CHECKPOINT = "checkpoints/normalization_pre_rec_split_regular_model10/best.keras"
 
@@ -77,7 +77,7 @@ def plot_training_curves(history, save_path=None):
 def annotate_precision_recall(ax, cm):
     """Add per-class recall (right of rows), precision (below columns) and accuracy (bottom right) to confusion matrix."""
     n = cm.shape[0]
-    recall = np.diag(cm) / cm.sum(axis=1).clip(min=1)
+    recall = np.diag(cm) / cm.sum(axis=1).clip(min=1) 
     precision = np.diag(cm) / cm.sum(axis=0).clip(min=1)
 
     for i in range(n):
@@ -95,8 +95,7 @@ def annotate_precision_recall(ax, cm):
     accuracy = np.diag(cm).sum() / cm.sum()
     ax.text(n - 0.5 + 0.4, n - 0.5 + 0.4, f"Acc:\n{accuracy:.2f}",
             ha="left", va="top", fontsize=8, fontweight="bold", color="darkred")
-N_SAMPLES = 5
-SEED = 7
+
 GAP = 0.3  # gap between truth and prediction traces (in signal units)
 
 
