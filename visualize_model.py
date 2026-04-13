@@ -11,7 +11,8 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from env import DATA_FOR_ML_X4, FIGURES_DIR, CATEGORY_NAMES, MURMUR_NAMES
 from ML import BATCH_SIZE, load_all_ids, split_ids
 from utils.plot_utils import LABEL_COLORS, LABEL_NAMES
-CHECKPOINT = "checkpoints/normalization_pre_rec_split_regular_model10/best.keras"
+CHECKPOINT = "checkpoints/normalization_pre_rec_split_regular_model10/best_normalization_pre_rec_split_regular_model10_calculated_with_normalization_per_rec_and_regular_splitting.keras"
+
 
 
 def plot_training_curves(history, save_path=None):
@@ -97,8 +98,6 @@ def annotate_precision_recall(ax, cm):
             ha="left", va="top", fontsize=8, fontweight="bold", color="darkred")
 
 GAP = 0.3  # gap between truth and prediction traces (in signal units)
-
-
 def plot_truth_and_pred(ax, signal, y_true, y_pred, sr, rec_id):
     t = np.arange(len(signal)) / sr
     sig_range = signal.max() - signal.min()
@@ -137,12 +136,15 @@ def plot_confusion_matrix(model, data_path, name=None, split="all", batch_size=B
     ids = _get_ids_for_split(data_path, split)
     print(f"Predicting on {len(ids)} recordings (split={split})...")
     all_true, all_pred = [], []
-    for i in range(0, len(all_ids), batch_size):
-        batch_ids = all_ids[i:i + batch_size]
-        signals = [np.load(DATA_FOR_ML / "signals" / f"{rid}.npy") for rid in batch_ids]
-        labels = [np.load(DATA_FOR_ML / "labels" / f"{rid}.npy") for rid in batch_ids]
-        X = np.stack(signals)[..., np.newaxis]
-        seg_preds, _ = model.predict(X, verbose=0)
+    for i in range(0, len(ids), batch_size):
+        batch_ids = ids[i:i + batch_size]
+        signals = [np.load(data_path / "signals" / f"{rid}.npy") for rid in batch_ids]
+        labels = [np.load(data_path / "labels" / f"{rid}.npy") for rid in batch_ids]
+        X = np.stack(signals)[..., np.newaxis] # [batch_size, samples_num, 1] - transforming into a form that the  Keras conv1D models expect. 
+        raw_preds = model.predict(X, verbose=0)
+        has_murmur_head = isinstance(raw_preds, (list, tuple)) and len(raw_preds) > 1
+        seg_preds = raw_preds[0] if has_murmur_head else raw_preds
+        # murmur_preds = raw_preds[1] if has_murmur_head else None
         preds = seg_preds.argmax(axis=-1)
         all_true.append(np.concatenate(labels))
         all_pred.append(preds.ravel())
@@ -204,9 +206,10 @@ def plot_murmur_confusion_matrix(model, data_path, name=None, split="all", batch
 
 def main():
     model = keras.models.load_model(CHECKPOINT, compile=False)
-    # Confusion matrices on all data
-    plot_confusion_matrix(model)
-    plot_murmur_confusion_matrix(model)
-
+    # plot_confusion_matrix(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
+    plot_murmur_confusion_matrix(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
+    # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
+    # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
+    # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
 if __name__ == "__main__":
     main()
