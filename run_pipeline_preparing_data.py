@@ -7,7 +7,7 @@ import shutil
 import matplotlib.pyplot as plt
 import numpy as np
 
-from env import DATA_FOR_ML, DOWNSAMPLE_FACTOR
+from env import DATA_FOR_ML_X4, DOWNSAMPLE_FACTOR
 from get_data import load_dataset
 from prepare_data import normalize_dataset, bandpass_filter_dataset, downsample_dataset
 from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings, split_data_into_fixed_length_recordings_without_unrecognized
@@ -15,7 +15,7 @@ from understand_data import plot_fft
 from utils.plot_utils import plot_recording_before_and_after
 
 
-def save_dataset_as_npy(dataset, out_dir=DATA_FOR_ML):
+def save_dataset_as_npy(dataset, out_dir=DATA_FOR_ML_X4):
     """Save each recording's signal, segmentation labels, and murmur label as .npy."""
     if out_dir.exists():
         shutil.rmtree(out_dir)
