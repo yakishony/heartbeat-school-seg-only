@@ -5,12 +5,12 @@ Only one batch lives in RAM at a time.
 import numpy as np
 import tensorflow as tf
 
-from env import DATA_FOR_ML
+from env import DATA_FOR_ML_X2
 
 BATCH_SIZE = 32
 
 
-def list_recording_ids(DATA_RAW_DIR=DATA_FOR_ML):
+def list_recording_ids(DATA_RAW_DIR=DATA_FOR_ML_X2):
     signal_dir = DATA_RAW_DIR / "signals"
     return sorted(p.stem for p in signal_dir.glob("*.npy"))
 
@@ -18,8 +18,8 @@ def list_recording_ids(DATA_RAW_DIR=DATA_FOR_ML):
 def _load_npy_pair(rec_id_tensor):
     """tf.py_function helper: load signal + label arrays for one recording."""
     rec_id = rec_id_tensor.numpy().decode("utf-8")
-    signal = np.load(DATA_FOR_ML / "signals" / f"{rec_id}.npy")  # float32
-    label = np.load(DATA_FOR_ML / "labels" / f"{rec_id}.npy")    # int64
+    signal = np.load(DATA_FOR_ML_X2 / "signals" / f"{rec_id}.npy")  # float32
+    label = np.load(DATA_FOR_ML_X2 / "labels" / f"{rec_id}.npy")    # int64
     return signal, label
 
 
