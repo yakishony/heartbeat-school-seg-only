@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.io import wavfile
 
-from env import DATA_DOWNLOADED, NUMERIC_CATEGORIZED_MURMUR, DATA_RAW_DIR
+from env import DATA_DOWNLOADED, DATA_FOR_ML, DATA_RAW_DIR
 from pathlib import Path
 
 
@@ -51,24 +51,8 @@ def index_tsv_files(path):
     return tsv_files
 
 
-def build_murmur_map(txt_dir=None):
-    """Parse patient .txt files and return {patient_id: murmur} dict."""
-    if txt_dir is None:
-        txt_dir = DATA_DOWNLOADED
-    txt_dir = Path(txt_dir)
-    murmur_map = {}
-    for txt_file in txt_dir.glob("*.txt"):
-        patient_id = txt_file.stem
-        for line in txt_file.read_text().splitlines():
-            if line.startswith("#Murmur:"):
-                murmur_map[patient_id] = NUMERIC_CATEGORIZED_MURMUR[line.split(":")[1].strip()]
-                break
-    print(f"Loaded murmur labels for {len(murmur_map)} patients")
-    return murmur_map
-
-
-def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the missing annotations? 
-    """ returns pickle file with dataset as dict(rec_id: {'signal': signal, 'sr': sr, 'y': y, 'type': type, 'murmur': murmur}) 
+def load_dataset_raw(path_to_load_data_from=None, use_cache=True): # (save to pickle as dict) and returns the dict and the list of missing annotations
+    """ returns pickle file with dataset as dict(rec_id: {'signal': signal, 'sr': sr, 'y': y, 'type': type}) 
     and missing annotations as list(rec_id) """
 
     if use_cache and DATA_RAW_DIR.exists():
@@ -80,7 +64,6 @@ def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the mi
         path_to_load_data_from = download_dataset()
 
     tsv_files = index_tsv_files(path_to_load_data_from)
-    murmur_map = build_murmur_map()
     dataset = {}
     missing_annotations = []
     total_samples = 0
@@ -97,9 +80,6 @@ def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the mi
                 missing_annotations.append(rec_id)
                 continue
 
-            patient_id = rec_id.split("_")[0]
-            murmur = murmur_map[patient_id]
-
             sr, signal = wavfile.read(os.path.join(root, f))
             if signal.ndim > 1:
                 signal = signal[:, 0]
@@ -108,7 +88,7 @@ def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the mi
             total_samples += len(signal)
             total_unannotated += n_unannotated
             total_annotated_as_0 += n_annotated_as_0
-            dataset[rec_id] = {"signal": signal, "sr": sr, "y": y, 'type': rec_id.split('_')[1], 'murmur': murmur}
+            dataset[rec_id] = {"signal": signal, "sr": sr, "y": y, 'type': rec_id.split('_')[1]}
 
     print(f"Unannotated (not covered by any TSV row, y=0 by default): "
           f"{total_unannotated/total_samples:.1%} ({total_unannotated}/{total_samples} samples)")
@@ -122,11 +102,25 @@ def load_dataset(path_to_load_data_from=None, use_cache=True): # what are the mi
 
     return dataset, missing_annotations
 
+def save_dataset_as_npy(dataset, out_dir=DATA_FOR_ML): # (save to npy files)
+    """Save each recording's signal and segmentation labels as .npy."""
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    signal_dir = out_dir / "signals"
+    label_dir = out_dir / "labels"
+    signal_dir.mkdir(parents=True, exist_ok=True)
+    label_dir.mkdir(parents=True, exist_ok=True)
+
+    for rec_id, rec in dataset.items():
+        np.save(signal_dir / f"{rec_id}.npy", rec["signal"].astype(np.float32))
+        np.save(label_dir / f"{rec_id}.npy", rec["y"].astype(np.int64))
+
+    print(f"Saved {len(dataset)} recordings to {out_dir}")
 
 
 
 if __name__ == "__main__":
-    dataset, missing = load_dataset()
+    dataset, missing = load_dataset_raw()
     print(f"Loaded recordings: {len(dataset)}")
     print(f"Missing annotations: {len(missing)}")
     for rec_id, rec in list(dataset.items())[:3]:

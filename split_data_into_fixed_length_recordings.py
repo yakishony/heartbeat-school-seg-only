@@ -1,14 +1,14 @@
 import gc
-from tracemalloc import start
+
 from env import RATE, RATE_DS
-from get_data import load_dataset
+from download_data_and_annotate_step1 import load_dataset_raw
 from understand_data import plot_category_pie
 
 LEN_REC = 2
 SPLIT_SAMPLES = int(LEN_REC * RATE)     # for splitting raw data
 SAMPLES_NUM = int(LEN_REC * RATE_DS)    # after downsampling, used by ML.py
 
-def split_data_into_fixed_length_recordings(dataset):
+def split_data_into_fixed_length_recordings(dataset:{}): 
     split_dataset = {}
     count_full_0_splits = 0
     count_deleted_recordings = 0
@@ -33,14 +33,13 @@ def split_data_into_fixed_length_recordings(dataset):
                 'signal': rec['signal'][start_sample:end_sample],
                 'y': y,
                 'type': rec['type'],
-                'murmur': rec['murmur'],
             }
     print("Split dataset length:", len(split_dataset))
     print("Count deleted recordings:", count_deleted_recordings)
     print("Count full 0 splits:", count_full_0_splits)
     return split_dataset
             
-def split_data_into_fixed_length_recordings_without_unrecognized(dataset):
+def split_data_into_fixed_length_recordings_without_unrecognized(dataset:{}):
     """Split the dataset into fixed length recordings without unrecognized.
     every recoding with LEN_REC wont have above LEN_REC/2 unrecognized labeled timestamps """
     split_dataset = {}
@@ -78,7 +77,6 @@ def split_data_into_fixed_length_recordings_without_unrecognized(dataset):
                 'signal': rec['signal'][start_sample_index:end_sample_index],
                 'y': rec['y'][start_sample_index:end_sample_index],
                 'type': rec['type'],
-                'murmur': rec['murmur'],
             }
             i += 1
 
@@ -94,7 +92,7 @@ def split_data_into_fixed_length_recordings_without_unrecognized(dataset):
 
 
 def run():
-    dataset_raw, missing = load_dataset()
+    dataset_raw, missing = load_dataset_raw()
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
     dataset_split_without_unreconized = split_data_into_fixed_length_recordings_without_unrecognized(dataset_raw)
     dataset_split = split_data_into_fixed_length_recordings(dataset_raw)

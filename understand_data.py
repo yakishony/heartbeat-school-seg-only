@@ -3,13 +3,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES, DATA_FOR_ML_X2
-from get_data import load_dataset
+from download_data_and_annotate_step1 import load_dataset_raw
 from utils.plot_utils import plot_recording
 from utils.data_utils import dataset_to_summary_df
-from prepare_data import BANDPASS_LOWCUT, BANDPASS_HIGHCUT 
+from run_pipline_analysing_utils import BANDPASS_LOWCUT, BANDPASS_HIGHCUT 
 
 def plot_pie_chart_of_murmur_distribution():
-    dataset, _ = load_dataset()
+    dataset, _ = load_dataset_raw()
     murmur_distribution = pd.Series([rec['murmur'] for rec in dataset.values()]).value_counts()
     plt.figure(figsize=(8, 8))
     plt.pie(murmur_distribution.values, labels=murmur_distribution.index, autopct='%1.1f%%', startangle=140)
@@ -170,7 +170,7 @@ def plot_fft(data_set=None, signal_id=None, title="FFT", sr=RATE):
     # Import BANDPASS filter parameters from prepare_data.py
 
     if data_set is None:
-        data_set, _ = load_dataset()
+        data_set, _ = load_dataset_raw()
     if signal_id is None:
         signal_id = random.choice(list(data_set.keys()))
 
