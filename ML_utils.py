@@ -4,16 +4,15 @@ import tensorflow as tf
 import numpy as np
 
 
-from ML import BATCH_SIZE
 from env import CLASSES, DATA_FOR_ML
 
 # ── Data loading ──
 # Overall flow: scan directory for rec IDs → split into train/val/test →
 #  build a tf.data.Dataset that lazily loads .npy files one at a time.
 
-def load_all_ids():
+def load_all_ids(data_path=DATA_FOR_ML):
     """Return a sorted list of all recording ID strings available on disk."""
-    signal_dir = DATA_FOR_ML / "signals"
+    signal_dir = data_path / "signals"
     # glob("*.npy"): finds every file ending with .npy in the directory.
     # path.stem: strips the directory and extension, leaving just the filename
     #   (e.g. Path("signals/rec_001.npy").stem → "rec_001").
@@ -33,7 +32,7 @@ def _data_generator(rec_ids):
         yield signal, label
 
 
-def make_tf_dataset(rec_ids, batch_size=BATCH_SIZE, shuffle=True):
+def make_tf_dataset(rec_ids, batch_size, shuffle=True):
     from split_data_into_fixed_length_recordings import SAMPLES_NUM
     generator_func = lambda: _data_generator(rec_ids)  # Lambda returns a fresh generator each epoch so tf.data can cycle multiple epochs.
 
