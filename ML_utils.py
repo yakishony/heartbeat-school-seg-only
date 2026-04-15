@@ -88,11 +88,11 @@ def _balanced_class_weights(counts):
     """sklearn-style 'balanced' weights: total / (n_classes * count_per_class).
     Mean weight across classes = 1.0, so overall loss scale is unchanged."""
     n_classes = len(counts)
-    total = counts.sum()
-    return total / (n_classes * counts + 1e-8)
+    total_counts = counts.sum()
+    return total_counts / (n_classes * counts + 1e-8)
 
 
-def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES)):
+def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES), background_weight_is_1=True):
     """Compute 1-proportion weights for segmentation from training labels."""
     # count the propotions:
     counts = np.zeros(num_classes, dtype=np.float64)
@@ -101,6 +101,8 @@ def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES)):
         for c in range(num_classes):
             counts[c] += np.sum(labels == c)
     weights = _balanced_class_weights(counts)
+    if background_weight_is_1:
+        weights[0] = 1.0  
     print("Seg class counts:", dict(enumerate(counts.astype(int))))
     print("Seg class weights:", dict(enumerate(np.round(weights, 3))))
     return tf.constant(weights, dtype=tf.float32)

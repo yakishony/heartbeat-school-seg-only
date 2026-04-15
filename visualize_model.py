@@ -1,78 +1,46 @@
-"""
-Load a trained checkpoint, predict on validation samples, plot ground-truth vs prediction.
-"""
 import numpy as np
 import keras
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from env import DATA_FOR_ML_X4, FIGURES_DIR, CATEGORY_NAMES, MURMUR_NAMES
-from ML import BATCH_SIZE, load_all_ids, split_ids
+from ML import BATCH_SIZE
+from env import FIGURES_DIR, CATEGORY_NAMES, RATE
+from ML_utils import load_all_ids, split_ids, make_tf_dataset
 from utils.plot_utils import LABEL_COLORS, LABEL_NAMES
 CHECKPOINT = "checkpoints/normalization_pre_rec_split_regular_model10/best_normalization_pre_rec_split_regular_model10_calculated_with_normalization_per_rec_and_regular_splitting.keras"
 
 
-
-def plot_training_curves(history, save_path=None):
+def plot_training_curves(history, name=None):
     h = history.history
     epochs = list(range(1, len(h["loss"]) + 1))
 
-    is_multi = "seg_accuracy" in h
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-    if is_multi:
-        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    ax1.plot(epochs, h["accuracy"], 'o-', label='Train')
+    ax1.plot(epochs, h["val_accuracy"], 'o-', label='Val')
+    ax1.set_title('Accuracy')
+    ax1.set_xlabel('Epoch')
+    ax1.legend()
+    ax1.grid(True)
 
-        axes[0, 0].plot(epochs, h["seg_accuracy"], 'o-', label='Train')
-        axes[0, 0].plot(epochs, h["val_seg_accuracy"], 'o-', label='Val')
-        axes[0, 0].set_title('Segmentation Accuracy')
+    ax2.plot(epochs, h["loss"], 'o-', label='Train')
+    ax2.plot(epochs, h["val_loss"], 'o-', label='Val')
+    ax2.set_title('Loss')
+    ax2.set_xlabel('Epoch')
+    ax2.legend()
+    ax2.grid(True)
 
-        axes[0, 1].plot(epochs, h["seg_loss"], 'o-', label='Train')
-        axes[0, 1].plot(epochs, h["val_seg_loss"], 'o-', label='Val')
-        axes[0, 1].set_title('Segmentation Loss')
-
-        axes[0, 2].axis('off')
-
-        axes[1, 0].plot(epochs, h["murmur_accuracy"], 'o-', label='Train')
-        axes[1, 0].plot(epochs, h["val_murmur_accuracy"], 'o-', label='Val')
-        axes[1, 0].set_title('Murmur Accuracy')
-
-        axes[1, 1].plot(epochs, h["murmur_loss"], 'o-', label='Train')
-        axes[1, 1].plot(epochs, h["val_murmur_loss"], 'o-', label='Val')
-        axes[1, 1].set_title('Murmur Loss')
-
-        axes[1, 2].plot(epochs, h["murmur_recall_present"], 'o-', label='Train Recall')
-        axes[1, 2].plot(epochs, h["val_murmur_recall_present"], 'o-', label='Val Recall')
-        axes[1, 2].plot(epochs, h["murmur_precision_present"], 's--', label='Train Precision')
-        axes[1, 2].plot(epochs, h["val_murmur_precision_present"], 's--', label='Val Precision')
-        axes[1, 2].set_title('Murmur Present: Recall & Precision')
-
-        for ax in axes.flat:
-            ax.set_xlabel('Epoch')
-            if ax.get_legend_handles_labels()[1]:
-                ax.legend()
-            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator(10))
-            ax.grid(True, which='major')
-            ax.grid(True, which='minor', alpha=0.3)
+    fig.suptitle(f"Training Curves {name}", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])  # leave room for suptitle
+    if name:
+        plt.savefig(FIGURES_DIR / f"fig_training_curves_{name}.png", dpi=150)
+        print(f"Saved {FIGURES_DIR / f"fig_training_curves_{name}.png"}")
     else:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-        ax1.plot(epochs, h["accuracy"], 'o-', label='Train')
-        ax1.plot(epochs, h["val_accuracy"], 'o-', label='Val')
-        ax1.set_title('Accuracy'); ax1.legend()
-        ax1.yaxis.set_minor_locator(ticker.AutoMinorLocator(10))
-        ax1.grid(True, which='major'); ax1.grid(True, which='minor', alpha=0.3)
-
-        ax2.plot(epochs, h["loss"], 'o-', label='Train')
-        ax2.plot(epochs, h["val_loss"], 'o-', label='Val')
-        ax2.set_title('Loss'); ax2.legend()
-        ax2.yaxis.set_minor_locator(ticker.AutoMinorLocator(10))
-        ax2.grid(True, which='major'); ax2.grid(True, which='minor', alpha=0.3)
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=150)
+        plt.savefig(FIGURES_DIR / "fig_training_curves.png", dpi=150)
+        print(f"Saved {FIGURES_DIR / "fig_training_curves.png"}")
     plt.show()
+
 
 
 def annotate_precision_recall(ax, cm):
@@ -98,8 +66,8 @@ def annotate_precision_recall(ax, cm):
             ha="left", va="top", fontsize=8, fontweight="bold", color="darkred")
 
 GAP = 0.3  # gap between truth and prediction traces (in signal units)
-def plot_truth_and_pred(ax, signal, y_true, y_pred, sr, rec_id):
-    t = np.arange(len(signal)) / sr
+def plot_truth_and_pred(ax, signal, y_true, y_pred, rec_id):
+    t = np.arange(len(signal)) / RATE
     sig_range = signal.max() - signal.min()
     shift = sig_range + GAP # a shift that is adjusted to each recording
     for label, color in LABEL_COLORS.items():
@@ -136,18 +104,16 @@ def plot_confusion_matrix(model, data_path, name=None, split="all", batch_size=B
     ids = _get_ids_for_split(data_path, split)
     print(f"Predicting on {len(ids)} recordings (split={split})...")
     all_true, all_pred = [], []
+
     for i in range(0, len(ids), batch_size):
         batch_ids = ids[i:i + batch_size]
-        signals = [np.load(data_path / "signals" / f"{rid}.npy") for rid in batch_ids]
-        labels = [np.load(data_path / "labels" / f"{rid}.npy") for rid in batch_ids]
-        X = np.stack(signals)[..., np.newaxis] # [batch_size, samples_num, 1] - transforming into a form that the  Keras conv1D models expect. 
-        raw_preds = model.predict(X, verbose=0)
-        has_murmur_head = isinstance(raw_preds, (list, tuple)) and len(raw_preds) > 1
-        seg_preds = raw_preds[0] if has_murmur_head else raw_preds
-        # murmur_preds = raw_preds[1] if has_murmur_head else None
-        preds = seg_preds.argmax(axis=-1)
-        all_true.append(np.concatenate(labels))
-        all_pred.append(preds.ravel())
+        signals = [np.load(data_path / "signals" / f"{id}.npy") for id in batch_ids] # a len=batch_size list of signals with SAMPLES_NUM len
+        labels = [np.load(data_path / "labels" / f"{id}.npy") for id in batch_ids] # a len=batch_size list of labels with SAMPLES_NUM len
+        X = np.stack(signals)[..., np.newaxis] # [batch_size, samples_num, 1] - transforming into a form that the  Keras conv1D models expect.(matrix) 
+        seg_preds = model.predict(X, verbose=0) # [batch_size, samples_num, num_seg_classes] - num_seg_classes - softmax return probabilities
+        preds = seg_preds.argmax(axis=-1) # [batch_size, samples_num] - the class with the highest probability
+        all_true.append(np.concatenate(labels)) # concatenate all arrays in the list into one 1D array
+        all_pred.append(preds.reshape(-1)) # reshape the array to 1D array
         print(f"  {min(i + batch_size, len(ids))}/{len(ids)}")
     all_true = np.concatenate(all_true)
     all_pred = np.concatenate(all_pred)
@@ -166,48 +132,12 @@ def plot_confusion_matrix(model, data_path, name=None, split="all", batch_size=B
     disp.figure_.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Saved {out}")
     plt.show()
-
-
-def plot_murmur_confusion_matrix(model, data_path, name=None, split="all", batch_size=BATCH_SIZE):
-    if name is None:
-        name = input("Enter a name for murmur confusion matrix figure: ")
-    ids = _get_ids_for_split(data_path, split)
-    print(f"Predicting murmur on {len(ids)} recordings (split={split})...")
-    all_true, all_pred = [], []
-    for i in range(0, len(ids), batch_size):
-        batch_ids = ids[i:i + batch_size]
-        signals = [np.load(data_path / "signals" / f"{rid}.npy") for rid in batch_ids]
-        murmurs = [np.load(data_path / "murmurs" / f"{rid}.npy") for rid in batch_ids]
-        X = np.stack(signals)[..., np.newaxis]
-        _, murmur_preds = model.predict(X, verbose=0)
-        all_true.append(np.array(murmurs))
-        all_pred.append(murmur_preds.argmax(axis=-1))
-        print(f"  {min(i + batch_size, len(ids))}/{len(ids)}")
-    all_true = np.concatenate(all_true)
-    all_pred = np.concatenate(all_pred)
-
-    cm = confusion_matrix(all_true, all_pred, labels=list(range(len(MURMUR_NAMES))))
-    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
-
-    disp = ConfusionMatrixDisplay(cm_norm, display_labels=MURMUR_NAMES)
-    disp.plot(cmap="Oranges", values_format=".2f", colorbar=False)
-    annotate_precision_recall(disp.ax_, cm)
-    split_label = f" [{split}]" if split != "all" else ""
-    disp.ax_.set_title(f"Normalized Confusion Matrix — Murmur ({name}){split_label}", fontsize=13)
-    disp.figure_.set_size_inches(7, 4.5)
-    disp.figure_.tight_layout()
-
-    out = FIGURES_DIR / f"fig_murmur_confusion_matrix_{name}_{split}.png"
-    disp.figure_.savefig(out, dpi=150, bbox_inches="tight")
-    print(f"Saved {out}")
-    plt.show()
-
+    return all_true, all_pred
 
 
 def main():
     model = keras.models.load_model(CHECKPOINT, compile=False)
     # plot_confusion_matrix(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
-    plot_murmur_confusion_matrix(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
     # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
     # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
     # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
