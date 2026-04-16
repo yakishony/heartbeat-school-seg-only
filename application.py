@@ -8,12 +8,12 @@ import keras
 
 from scipy.io import wavfile
 
-from prepare_data import bandpass_filter, normalize_signal, downsample_signal
-from utils.plot_utils import plot_segmented_signal_interactive
+from run_pipline_analysing_utils import bandpass_filter, normalize_signal, downsample_signal
+from plot_utils import plot_segmented_signal_interactive
 from env import RATE, DOWNSAMPLE_FACTOR, RATE_DS
 from split_data_into_fixed_length_recordings import SAMPLES_NUM, LEN_REC
 
-CHECKPOINT = "checkpoints/downsampled_4x_reducedoverfit_testadded_model4/epoch_032.keras"
+CHECKPOINT = "checkpoints/downsampled_4x_reducedoverfit_testadded_model4/epoch_032.keras" # checkpoint should change to model13
 model = keras.models.load_model(CHECKPOINT)
 SUPPORTED_RATES = {RATE, RATE_DS}  # {4000, 1000}
 
