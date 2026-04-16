@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import numpy as np
 import keras
 import matplotlib.pyplot as plt
@@ -5,14 +7,13 @@ import matplotlib.ticker as ticker
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from ML import BATCH_SIZE
-from env import FIGURES_DIR, CATEGORY_NAMES, RATE
-from ML_utils import load_all_ids, split_ids, make_tf_dataset
-from utils.plot_utils import LABEL_COLORS, LABEL_NAMES
-CHECKPOINT = "checkpoints/normalization_pre_rec_split_regular_model10/best_normalization_pre_rec_split_regular_model10_calculated_with_normalization_per_rec_and_regular_splitting.keras"
-
+from env import DATA_FOR_ML, FIGURES_DIR, CATEGORY_NAMES, RATE
+from ML_utils import load_all_ids, split_ids
+from plot_utils import LABEL_COLORS, LABEL_NAMES
+CHECKPOINT = Path("checkpoints/model_13/best.keras")
 
 def plot_training_curves(history, name=None):
-    h = history.history
+    h = history if isinstance(history, dict) else history.history # if history is the dict from json - no need to preform history.history on it
     epochs = list(range(1, len(h["loss"]) + 1))
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
@@ -33,12 +34,11 @@ def plot_training_curves(history, name=None):
 
     fig.suptitle(f"Training Curves {name}", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.95])  # leave room for suptitle
-    if name:
-        plt.savefig(FIGURES_DIR / f"fig_training_curves_{name}.png", dpi=150)
-        print(f"Saved {FIGURES_DIR / f"fig_training_curves_{name}.png"}")
-    else:
-        plt.savefig(FIGURES_DIR / "fig_training_curves.png", dpi=150)
-        print(f"Saved {FIGURES_DIR / "fig_training_curves.png"}")
+    
+    out = FIGURES_DIR / f"fig_training_curves_{name}.png"
+    plt.savefig(out, dpi=150)
+    print(f"Saved {out}")
+
     plt.show()
 
 
@@ -136,10 +136,6 @@ def plot_confusion_matrix(model, data_path, name=None, split="all", batch_size=B
 
 
 def main():
-    model = keras.models.load_model(CHECKPOINT, compile=False)
-    # plot_confusion_matrix(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
-    # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
-    # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
-    # plot_truth_and_pred(model, DATA_FOR_ML_X4, name="data_normalization_pre_rec_split_regular_model10_best_epoch", split="test")
+    pass
 if __name__ == "__main__":
     main()
