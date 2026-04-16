@@ -4,20 +4,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from env import FIGURES_DIR, RATE, TYPES, CLASSES, CATEGORY_NAMES, DATA_FOR_ML_X2
 from download_data_and_annotate_step1 import load_dataset_raw
-from utils.plot_utils import plot_recording
-from utils.data_utils import dataset_to_summary_df
 from run_pipline_analysing_utils import BANDPASS_LOWCUT, BANDPASS_HIGHCUT 
 
-def plot_pie_chart_of_murmur_distribution():
-    dataset, _ = load_dataset_raw()
-    murmur_distribution = pd.Series([rec['murmur'] for rec in dataset.values()]).value_counts()
-    plt.figure(figsize=(8, 8))
-    plt.pie(murmur_distribution.values, labels=murmur_distribution.index, autopct='%1.1f%%', startangle=140)
-    plt.title("Distribution of Murmur")
-    plt.savefig(FIGURES_DIR / "fig_murmur_pie.png", dpi=100)
-    print(f"Saved {FIGURES_DIR / 'fig_murmur_pie.png'}")
+
+def dataset_to_summary_df(dataset: dict) -> pd.DataFrame:
+    """One-row-per-recording summary with rec_id, type, sr, n_samples, length_sec."""
+    return pd.DataFrame([
+        {'rec_id': rec_id, 'type': rec['type'], 'sr': rec['sr'],
+         'n_samples': len(rec['signal']), 'length_sec': len(rec['signal']) / rec['sr']}
+        for rec_id, rec in dataset.items()
+    ])
 
 def build_summary(dataset):
+    """Build a summary of the dataset - to see the distribution of recordings by type, length, and rate"""
     df = dataset_to_summary_df(dataset)
     df.to_csv(FIGURES_DIR / "recordings_summary.csv", index=False)
     print(f"Saved {FIGURES_DIR / 'recordings_summary.csv'}  ({len(df)} rows)")
@@ -37,6 +36,7 @@ def build_summary(dataset):
 
 
 def plot_stacked_histogram_by_type(df):
+    """Plot the distribution of recording lengths by type(TV, MV, PV, Phc, AV) - to see if some types have longer or shorter recordings"""
     plt.figure(figsize=(12, 6))
     labels = df['type'].unique().tolist()
     values = [df.loc[df['type'] == t, 'length_sec'].values for t in labels]
@@ -48,8 +48,8 @@ def plot_stacked_histogram_by_type(df):
     plt.savefig(FIGURES_DIR / "fig_histogram.png", dpi=100)
     print(f"Saved {FIGURES_DIR / 'fig_histogram.png'}")
 
-
-def plot_pie(df):
+def plot_type_pie(df):
+    """Plot the distribution of recording types(TV, MV, PV, Phc, AV)"""
     type_counts = df['type'].value_counts()
     plt.figure(figsize=(8, 8))
     plt.pie(type_counts.values, labels=type_counts.index, autopct='%1.1f%%', startangle=140)
@@ -59,6 +59,7 @@ def plot_pie(df):
 
 
 def plot_category_pie(dataset, name="fig_category_pie"):
+    """Plot the distribution of time samples by category (background, S1, systolic, S2, diastole)"""
     counts = np.zeros(len(CLASSES), dtype=np.int64)
     for rec in dataset.values():
         for c in CLASSES:
@@ -70,59 +71,8 @@ def plot_category_pie(dataset, name="fig_category_pie"):
     plt.show()
     print(f"Saved {FIGURES_DIR / (name + '.png')}")
 
-
-def plot_global_vs_good_max(dataset):
-    max_signals_by_type = {t: [] for t in TYPES}
-    good_max_by_type = {t: [] for t in TYPES}
-    for rec in dataset.values():
-        t = rec['type']
-        max_signals_by_type[t].append(np.max(np.abs(rec['signal'])))
-        resolved = rec['y'] != 0
-        if resolved.any():
-            good_max_by_type[t].append(np.max(np.abs(rec['signal'][resolved])))
-        else:
-            good_max_by_type[t].append(0.0)
-
-    colors = plt.cm.tab10(np.linspace(0, 1, len(TYPES)))
-    type_colors = dict(zip(TYPES, colors))
-
-    fig = plt.figure(figsize=(10, 10))
-    gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[1, 4],
-                          hspace=0.05, wspace=0.05)
-
-    ax_scatter = fig.add_subplot(gs[1, 0])
-    ax_hist_x = fig.add_subplot(gs[0, 0], sharex=ax_scatter)
-    ax_hist_y = fig.add_subplot(gs[1, 1], sharey=ax_scatter)
-
-    for t in TYPES:
-        ax_scatter.scatter(max_signals_by_type[t], good_max_by_type[t],
-                           alpha=0.4, s=10, color=type_colors[t], label=t)
-
-    all_max = [v for vals in max_signals_by_type.values() for v in vals]
-    all_good = [v for vals in good_max_by_type.values() for v in vals]
-    max_val = max(max(all_max), max(all_good))
-    ax_scatter.plot([0, max_val], [0, max_val], 'r--', linewidth=1)
-    ax_scatter.set_xlabel("Global Max |signal|")
-    ax_scatter.set_ylabel("Good Max |signal| (y ≠ 0)")
-    ax_scatter.legend()
-
-    ax_hist_x.hist([max_signals_by_type[t] for t in TYPES], bins=50,
-                   stacked=True, color=[type_colors[t] for t in TYPES], label=TYPES, edgecolor='black')
-    ax_hist_x.tick_params(labelbottom=False)
-    ax_hist_x.set_ylabel("Count")
-
-    ax_hist_y.hist([good_max_by_type[t] for t in TYPES], bins=50,
-                   stacked=True, color=[type_colors[t] for t in TYPES], orientation='horizontal', edgecolor='black')
-    ax_hist_y.tick_params(labelleft=False)
-    ax_hist_y.set_xlabel("Count")
-
-    fig.suptitle("Global Max vs Resolved-Region Max", y=0.92)
-    fig.savefig(FIGURES_DIR / "fig_global_vs_good_max.png", dpi=100)
-    print(f"Saved {FIGURES_DIR / 'fig_global_vs_good_max.png'}")
-
-
 def plot_unrecognized_by_timestamp():
-    """For each timestamp, plot the % of recordings labeled 'unrecognized' (class 0)."""
+    """For each timestamp, plot the % of recordings labeled 'unrecognized' (class 0). - to understand where model unrecognized samples are"""
     
     label_dir = DATA_FOR_ML_X2 / "labels"
     label_files = sorted(label_dir.glob("*.npy"))
@@ -141,33 +91,8 @@ def plot_unrecognized_by_timestamp():
     print(f"Saved {FIGURES_DIR / 'fig_unrecognized_by_timestamp.png'}")
 
 
-def print_tail_middele_and_head_unrecognized_precentage_from_recordings():
-    """Print the percentage of unrecognized labels at the tail, middle, and head of each recording."""
-    label_dir = DATA_FOR_ML_X2 / "labels"
-    label_files = sorted(label_dir.glob("*.npy"))
-    recordings_labels = np.stack([np.load(f) for f in label_files])  # (n_recordings, n_timestamps)
-    counts = np.zeros(3)
-
-    for rec in recordings_labels:
-        counts[0] += rec[0] == 0
-        counts[2] += rec[-1] == 0
-
-        # Check if anywhere in the recording, it went from non-0 to 0 (excluding the first timestamp)
-        for i in range(1, len(rec)):
-            if rec[i-1] != 0 and rec[i] == 0:
-                for j in range(i, len(rec)):
-                    if rec[j] != 0:
-                        counts[1] += 1
-                        break
-                break
-
-    counts = counts / len(recordings_labels) * 100
-    print(f"Count of head unrecognized: {counts[0]}%")
-    print(f"Count of middle unrecognized: {counts[1]}%")
-    print(f"Count of tail unrecognized: {counts[2]}%")
-
 def plot_fft(data_set=None, signal_id=None, title="FFT", sr=RATE):
-    # Import BANDPASS filter parameters from prepare_data.py
+    """ Import BANDPASS filter parameters from run_pipline_analysing_utils.py and shows the bandpass lims on the x axis"""
 
     if data_set is None:
         data_set, _ = load_dataset_raw()
@@ -196,11 +121,6 @@ def plot_fft(data_set=None, signal_id=None, title="FFT", sr=RATE):
 
     print(f"Saved {FIGURES_DIR / name }")
     return signal_id
-
-
-def plot_example(dataset, df):
-    example_id = df['rec_id'].iloc[2]
-    plot_recording(example_id, dataset, [4.3, 4.5], [-3000, 3000])
 
 if __name__ == "__main__":
     # print_tail_middele_and_head_unrecognized_precentage_from_recordings()
