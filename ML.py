@@ -5,7 +5,6 @@ import keras
 from keras import layers, Model
 # Path: object-oriented filesystem paths (e.g. Path("a") / "b" → "a/b")
 from pathlib import Path
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 
 from ML_utils import make_tf_dataset, split_ids, compute_seg_class_weights, weighted_loss
 from env import (
@@ -100,8 +99,11 @@ def main(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
 
     checkpoint_dir = DATA_FOR_ML.parent / "checkpoints" / run_name
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    # save split ids of this model and data to a json file
+    with open(checkpoint_dir / "split_ids.json", "w") as f:
+        json.dump({"train_ids": train_ids, "val_ids": val_ids, "test_ids": test_ids}, f)
+    
     print(f"Checkpoints → {checkpoint_dir} (resuming from epoch {initial_epoch})")
-
     # save model description to a txt file(with the ML.py and run_pipeline_analysing_data_step_2.py code)
     model_description = checkpoint_dir / "model_description.txt"
     if not model_description.exists():
