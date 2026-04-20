@@ -20,10 +20,28 @@ LABEL_NAMES = {
     4: "diastole"
 }
 
+# for application
+def plot_plain_signal_interactive(signal, sr, height=450, width=1100):
+    """Plain amplitude-vs-time Plotly figure."""
+    t = np.arange(len(signal)) / sr
+    fig = go.Figure()
+    fig.add_trace(go.Scattergl(
+        x=t, y=signal,
+        mode="markers", marker=dict(size=2, color="steelblue"),
+        name="signal",
+    ))
+    fig.update_layout(
+        height=height, width=width,
+        xaxis_title="Time (s)", yaxis_title="Amplitude",
+        margin=dict(l=50, r=20, t=40, b=40),
+        dragmode="zoom",
+    )
+    return fig
 
-def plot_segmented_signal_interactive(signal, y, height=450, width=1100):
+# for application
+def plot_segmented_signal_interactive(signal, y, sr, height=450, width=1100):
     """an interactive Plotly figure with color-coded segmentation."""
-    t = np.arange(len(signal)) / RATE
+    t = np.arange(len(signal)) / sr
     fig = go.Figure()
     for label, color in LABEL_COLORS.items():
         mask = y == label
