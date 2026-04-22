@@ -7,12 +7,14 @@ import gradio as gr
 import keras
 
 from scipy.io import wavfile
+from scipy.signal import resample
 
 from run_pipline_analysing_utils import bandpass_filter, normalize_signal, downsample_signal
 from plot_utils import plot_segmented_signal_interactive, plot_plain_signal_interactive
 from env import RATE, DOWNSAMPLE_FACTOR, RATE_DS
 from split_data_into_fixed_length_recordings import SAMPLES_NUM, LEN_REC
 
+# Load model once at server startup — stays in memory for all requests
 CHECKPOINT = "checkpoints/model_13/best.keras"
 model = keras.models.load_model(CHECKPOINT, compile=False)
 SUPPORTED_RATES = {RATE, RATE_DS}  # {4000, 1000}
@@ -106,7 +108,9 @@ def on_segment(signal_list, sr):
     return plot_segmented_signal_interactive(signal, full_predicted_signal, sr=sr)
 
 
-with gr.Blocks(title="Heartbeat PCG Segmentation") as demo:
+HIDE_SHARE_CSS = "button.share-btn, .share-button, button[title='Share'] { display: none !important; }"  # CSS rule injected into the Gradio page to hide the non-functional share button on the audio widget
+
+with gr.Blocks(title="Heartbeat PCG Segmentation", css=HIDE_SHARE_CSS) as demo:
     gr.Markdown("# Heartbeat PCG Segmentation")
     gr.Markdown(
         "Upload a heart sound WAV recording (≥ 2 s). "
