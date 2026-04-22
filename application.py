@@ -17,7 +17,6 @@ from split_data_into_fixed_length_recordings import SAMPLES_NUM, LEN_REC
 # Load model once at server startup — stays in memory for all requests
 CHECKPOINT = "checkpoints/model_13/best.keras"
 model = keras.models.load_model(CHECKPOINT, compile=False)
-SUPPORTED_RATES = {RATE, RATE_DS}  # {4000, 1000}
 
 def seperate_signal_into_2s_chunks(signal, signal_sr):
     n = len(signal)
@@ -52,17 +51,14 @@ def seperate_signal_into_2s_chunks(signal, signal_sr):
 def preprocess_wav(audio_path):
     """Load, filter, normalize, downsample. Returns (signal, sr)."""
     sr, signal = wavfile.read(audio_path)
-
-    if not sr % RATE_DS == 0:
-        raise gr.Error(f"Sampling Rate is not supported")
     if signal.ndim > 1:
         signal = signal[:, 0]
     signal = signal.astype(np.float64)
 
-    # preprocess the signal
     signal = normalize_signal(signal)
-    signal = bandpass_filter(signal, fs=sr)
 
+    # downsample before bandpass so the filter operates at a low sample rate
+    # (at high sample rates like 44100 Hz(Nyquist is 22050 Hz) the 60-150 Hz band is too narrow and the filter becomes unstable)
     if sr != RATE_DS:
         if sr % RATE_DS == 0:
             signal = downsample_signal(signal, sr // RATE_DS)
@@ -71,6 +67,8 @@ def preprocess_wav(audio_path):
             num_samples = int(len(signal) * RATE_DS / sr) # the samples number in RATE_DS (RATE_DS * recording_lengs_s)
             signal = resample(signal, num_samples) # resample the signal to the new sample rate
         sr = RATE_DS
+
+    signal = bandpass_filter(signal, fs=sr)
 
     return signal, sr
 
