@@ -54,19 +54,21 @@ def preprocess_wav(audio_path):
     if not sr % RATE_DS == 0:
         raise gr.Error(f"Sampling Rate is not supported")
     if signal.ndim > 1:
-        signal = signal[:, 0] # take the first channel if there are multiple channels(ofter in stereo recordings) - coverts to mono
+        signal = signal[:, 0]
     signal = signal.astype(np.float64)
 
     # preprocess the signal
     signal = normalize_signal(signal)
     signal = bandpass_filter(signal, fs=sr)
 
-    # downsample the signal if it is 4000 Hz:
-    if not sr == RATE_DS:
-        downsample_factor = sr // RATE_DS
-
-        signal = downsample_signal(signal, downsample_factor)
-        sr = sr // downsample_factor
+    if sr != RATE_DS:
+        if sr % RATE_DS == 0:
+            signal = downsample_signal(signal, sr // RATE_DS)
+        else:
+            # resample for sample rates not evenly divisible by RATE_DS (e.g. 44100 Hz from microphone)
+            num_samples = int(len(signal) * RATE_DS / sr) # the samples number in RATE_DS (RATE_DS * recording_lengs_s)
+            signal = resample(signal, num_samples) # resample the signal to the new sample rate
+        sr = RATE_DS
 
     return signal, sr
 
@@ -107,7 +109,7 @@ def on_segment(signal_list, sr):
 with gr.Blocks(title="Heartbeat PCG Segmentation") as demo:
     gr.Markdown("# Heartbeat PCG Segmentation")
     gr.Markdown(
-        "Upload a heart sound WAV recording (4 000 or 1 000 Hz, ≥ 2 s). "
+        "Upload a heart sound WAV recording (≥ 2 s). "
         "The model segments it into **S1**, **systole**, **S2**, **diastole**, and **unrecognized**.  \n"
         "Use the **scroll wheel to zoom** and **drag to pan** on the plot."
     )
@@ -116,7 +118,7 @@ with gr.Blocks(title="Heartbeat PCG Segmentation") as demo:
 
     with gr.Row():
         with gr.Column(scale=1):
-            audio_in = gr.Audio(type="filepath", label="Upload PCG (.wav)")
+            audio_in = gr.Audio(type="filepath", label="Upload PCG (.wav)", editable=False)
             btn = gr.Button("Segment", variant="primary")
         with gr.Column(scale=3):
             plot_out = gr.Plot(label="Segmentation Result")
