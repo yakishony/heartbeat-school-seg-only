@@ -6,9 +6,9 @@ from scipy.signal import butter, filtfilt
 from env import RATE
 
 
-NORMALIZE_TO_GLOBAL_MAX = False
-BANDPASS_LOWCUT = 60.0
-BANDPASS_HIGHCUT = 150.0
+NORMALIZE_TO_GLOBAL_MAX = False     # Whether to normalize by global max vs per-recording max
+BANDPASS_LOWCUT = 60.0              # Bandpass filter low cutoff (Hz)
+BANDPASS_HIGHCUT = 150.0            # Bandpass filter high cutoff (Hz)
 
 
 def find_max_of_all_recordings_for_normalization(dataset):
@@ -18,7 +18,8 @@ def find_max_of_all_recordings_for_normalization(dataset):
     return np.max(max_values)
 
 
-def normalize_signal(signal, global_max = None):
+def normalize_signal(signal, global_max=None):
+    """Normalize signal to [-1, 1]. If global_max is None, normalizes by the signal's own max."""
     if global_max is None:
         max_value = np.max(np.abs(signal))
     else:
@@ -27,6 +28,7 @@ def normalize_signal(signal, global_max = None):
 
 
 def bandpass_filter(signal, BANDPASS_LOWCUT=BANDPASS_LOWCUT, BANDPASS_HIGHCUT=BANDPASS_HIGHCUT, fs=RATE, order=4):
+    """Apply zero-phase Butterworth bandpass filter (keeps frequencies between LOWCUT and HIGHCUT)."""
     nyq = 0.5 * fs
     b, a = butter(order, [BANDPASS_LOWCUT / nyq, BANDPASS_HIGHCUT / nyq], btype='band')
     return filtfilt(b, a, signal)
@@ -57,6 +59,7 @@ def bandpass_filter_dataset(dataset):
     return filtered
 
 def downsample_signal(signal, factor):
+    """Downsample by taking every factor-th sample."""
     return signal[::factor]
 
 
