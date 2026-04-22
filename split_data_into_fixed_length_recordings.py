@@ -4,9 +4,9 @@ from env import RATE, RATE_DS
 from download_data_and_annotate_step1 import load_dataset_raw
 from understand_data import plot_category_pie
 
-LEN_REC = 2
-SPLIT_SAMPLES = int(LEN_REC * RATE)     # for splitting raw data
-SAMPLES_NUM = int(LEN_REC * RATE_DS)    # after downsampling, used by ML.py
+LEN_REC = 2                              # Window length in seconds
+SPLIT_SAMPLES = int(LEN_REC * RATE)      # Samples per window at original rate (8,000)
+SAMPLES_NUM = int(LEN_REC * RATE_DS)     # Samples per window after downsampling (2,000) — used by ML.py
 
 def split_data_into_fixed_length_recordings(dataset:{}): 
     split_dataset = {}
