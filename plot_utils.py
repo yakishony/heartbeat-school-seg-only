@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from env import FIGURES_DIR, RATE
 
 
+# Color mapping for each segmentation class
 LABEL_COLORS = {
     0: "gray",
     1: "red",     # S1
@@ -12,6 +13,7 @@ LABEL_COLORS = {
     4: "green"    # diastole
 }
 
+# Display names for each segmentation class
 LABEL_NAMES = {
     0: "unrecognized",
     1: "S1",
