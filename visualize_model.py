@@ -65,7 +65,7 @@ def annotate_precision_recall(ax, cm):
     ax.text(n - 0.5 + 0.4, n - 0.5 + 0.4, f"Acc:\n{accuracy:.2f}",
             ha="left", va="top", fontsize=8, fontweight="bold", color="darkred")
 
-GAP = 0.3  # gap between truth and prediction traces (in signal units)
+GAP = 0.3  # vertical gap between truth and prediction traces (in signal amplitude units)
 def plot_truth_and_pred(ax, signal, y_true, y_pred, rec_id):
     t = np.arange(len(signal)) / RATE
     sig_range = signal.max() - signal.min()
