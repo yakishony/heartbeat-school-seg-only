@@ -127,8 +127,9 @@ with gr.Blocks(title="Heartbeat PCG Segmentation", css=HIDE_SHARE_CSS) as demo:
         with gr.Column(scale=3):
             plot_out = gr.Plot(label="Segmentation Result")
 
-    audio_in.change(fn=on_upload, inputs=audio_in, outputs=[plot_out, signal_state, sr_state])
-    btn.click(fn=on_segment, inputs=[signal_state, sr_state], outputs=plot_out)
+    audio_in.change(fn=on_upload, inputs=audio_in, outputs=[plot_out, signal_state, sr_state])  # triggered when a file is uploaded
+    audio_in.stop_recording(fn=on_upload, inputs=audio_in, outputs=[plot_out, signal_state, sr_state])  # triggered when microphone recording stops
+    btn.click(fn=on_segment, inputs=[signal_state, sr_state], outputs=plot_out)  # triggered when "Segment" button is clicked
 
 if __name__ == "__main__":
     demo.launch()
