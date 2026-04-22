@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; padding: 20px; max-width: 900px; margin: auto; }
+  h1 { font-size: 16pt; font-weight: bold; margin-top: 6pt; margin-bottom: 4pt; }
+  h2 { font-size: 14pt; font-weight: bold; margin-top: 10pt; margin-bottom: 3pt; }
+  h3 { font-size: 13pt; font-weight: bold; margin-top: 6pt; margin-bottom: 2pt; }
+  p { margin-top: 2pt; margin-bottom: 4pt; }
+  ul, ol { margin-top: 2pt; margin-bottom: 4pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0; }
+  th, td { border: 1px solid #bbb; padding: 4px 8px; text-align: right; font-size: 11pt; }
+  th { background: #ecf0f1; }
+  .arch-box { background: #f7f9fb; border: 1px solid #ccc; border-radius: 4px; padding: 10px; margin: 4pt 0; font-family: monospace; font-size: 9pt; direction: ltr; text-align: left; line-height: 1.4; white-space: pre-wrap; }
+  .note { background: #fef9e7; border-right: 4px solid #f1c40f; padding: 6px 10px; margin: 4pt 0; font-size: 11pt; }
+  code { background: #eee; padding: 1px 4px; border-radius: 3px; font-size: 10pt; direction: ltr; }
+  .figure-placeholder { text-align: center; margin: 6pt 0; color: #888; font-style: italic; font-size: 11pt; }
+  .formula { direction: ltr; text-align: center; font-family: monospace; font-size: 11pt; margin: 4pt 0; background: #f4f4f4; padding: 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>שלב היישום (Software Deployment)</h1>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>1. תיאור והסבר כיצד היישום משתמש במודל</h2>
+
+<p>
+היישום הוא אפליקציית ווב (Gradio) המאפשרת למשתמש להעלות הקלטת קול לב (WAV) ולקבל גרף צבעוני של סגמנטציה — סיווג כל נקודת זמן ל-<strong>S1</strong>, <strong>Systole</strong>, <strong>S2</strong>, <strong>Diastole</strong> או <strong>Unrecognized</strong>.
+</p>
+
+<p>תהליך העבודה:</p>
+<ol>
+<li><strong>העלאת קובץ WAV</strong> — המשתמש מעלה הקלטת PCG דרך הממשק. מיד מוצג גרף אמפליטודה של הסיגנל.</li>
+<li><strong>עיבוד מקדים</strong> — נורמליזציה, סינון פס-רצועה (60–150 Hz) ו-Downsampling ל-1,000 Hz.</li>
+<li><strong>חיתוך לחלונות של 2 שניות</strong> — בהתאם לגודל הקלט שעליו אומן המודל (2,000 נקודות). שארית קצרה מ-2s מטופלת בחלון חופף.</li>
+<li><strong>חיזוי</strong> — כל חלון מוזן למודל (<code>model.predict</code>), שמחזיר הסתברות ל-5 מחלקות בכל נקודת זמן. <code>argmax</code> בוחר את המחלקה.</li>
+<li><strong>הצגת תוצאות</strong> — גרף Plotly אינטראקטיבי (זום + גלילה) עם צביעה לפי הסגמנטציה.</li>
+</ol>
+
+<p>
+המודל נטען פעם אחת בעת הפעלת השרת (<code>keras.models.load_model</code>) ונשאר בזיכרון.
+</p>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>2. תיאור קוד הקולט את ה-DATA שעליו יבוצע החיזוי והתאמתו למבנה נתונים המתאים לחיזוי</h2>
+
+<h3>2.1 עיבוד מקדים — <code>preprocess_wav(audio_path)</code></h3>
+<p>קריאת קובץ WAV → המרה למונו (אם סטריאו) → נורמליזציה לטווח [-1,1] לפי <code>max(|signal|)</code> → סינון Butterworth פס-רצועה (60–150 Hz) להסרת רעשים → Downsampling לקצב 1,000 Hz (בהתאם לאימון).</p>
+
+<h3>2.2 חיתוך לחלונות — <code>seperate_signal_into_2s_chunks(signal, sr)</code></h3>
+<p>הסיגנל נחתך לחלונות בני 2 שניות (2,000 נקודות). אם נשאר "זנב" קצר מ-2s, נוצר חלון חופף שמתחיל 2s לפני סוף הסיגנל — באזור החפיפה נשמר החיזוי מהחלון המלא הקודם.</p>
+
+<h3>2.3 התאמה למבנה הנתונים של המודל</h3>
+<p>
+כל חלון עובר <code>reshape</code> ל-<code>(1, 2000, 1)</code> — Batch=1, ציר זמן=2000, ערוץ יחיד — בהתאם לקלט שעליו אומן המודל (<code>Input(shape=(2000, 1))</code>). הפלט <code>(1, 2000, 5)</code> מכיל הסתברות ל-5 מחלקות בכל נקודת זמן, ו-<code>argmax</code> בוחר את המחלקה הסבירה ביותר.
+</p>
+
+</body>
+</html>
