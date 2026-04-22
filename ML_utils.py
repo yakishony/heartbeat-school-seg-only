@@ -83,12 +83,12 @@ def split_ids():
 
 # --class weights--
 
-def _balanced_class_weights(counts):
+def _balanced_class_weights(counts_of_samples_for_each_class):
     """sklearn-style 'balanced' weights: total / (n_classes * count_per_class).
     Mean weight across classes = 1.0, so overall loss scale is unchanged."""
-    n_classes = len(counts)
-    total_counts = counts.sum()
-    return total_counts / (n_classes * counts + 1e-8)
+    n_classes = len(counts_of_samples_for_each_class)
+    total_samples_num = counts_of_samples_for_each_class.sum() 
+    return total_samples_num / (n_classes * counts_of_samples_for_each_class + 1e-8) # add 1e-8 to avoid division by zero
 
 
 def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES), background_weight_is_1=True):
