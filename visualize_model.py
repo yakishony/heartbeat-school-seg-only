@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import random
 import numpy as np
 import keras
 import matplotlib.pyplot as plt
@@ -7,9 +8,9 @@ import matplotlib.ticker as ticker
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from ML import BATCH_SIZE
-from env import DATA_FOR_ML, FIGURES_DIR, CATEGORY_NAMES, RATE
+from env import DATA_FOR_ML, FIGURES_DIR, CATEGORY_NAMES, RATE_DS
 from ML_utils import load_all_ids, split_ids
-from plot_utils import LABEL_COLORS, LABEL_NAMES
+from plot_utils import LABEL_COLORS, LABEL_NAMES, plot_recording, plot_segmented_signal_on_ax
 CHECKPOINT = Path("checkpoints/model_13/best.keras")
 
 def plot_training_curves(history, name=None):
@@ -42,7 +43,6 @@ def plot_training_curves(history, name=None):
     plt.show()
 
 
-
 def annotate_precision_recall(ax, cm):
     """Add per-class recall (right of rows), precision (below columns) and accuracy (bottom right) to confusion matrix."""
     n = cm.shape[0]
@@ -67,7 +67,7 @@ def annotate_precision_recall(ax, cm):
 
 GAP = 0.3  # vertical gap between truth and prediction traces (in signal amplitude units)
 def plot_truth_and_pred(ax, signal, y_true, y_pred, rec_id):
-    t = np.arange(len(signal)) / RATE
+    t = np.arange(len(signal)) / RATE_DS
     sig_range = signal.max() - signal.min()
     shift = sig_range + GAP # a shift that is adjusted to each recording
     for label, color in LABEL_COLORS.items():
@@ -134,8 +134,29 @@ def plot_confusion_matrix(model, data_path, name=None, split="all", batch_size=B
     plt.show()
     return all_true, all_pred
 
+def plot_true_vs_predicted_on_several_recordings(model, data_path, name=None, recordings_ids=None, split="test"):
+    if name is None:
+        name = "true_vs_predicted_segmentation"
+    if recordings_ids is None:
+        all_ids = _get_ids_for_split(data_path, split)
+        recordings_ids = random.sample(all_ids, min(5, len(all_ids)))
+    fig, ax = plt.subplots(len(recordings_ids), 1, figsize=(14, 10))
+    for i, rec_id in enumerate(recordings_ids):
+        signal = np.load(data_path / "signals" / f"{rec_id}.npy")
+        label = np.load(data_path / "labels" / f"{rec_id}.npy")
+        pred = model.predict(signal.reshape(1, -1, 1), verbose=0).argmax(axis=-1).squeeze()
+        plot_truth_and_pred(ax[i], signal, label, pred, rec_id)
+    fig.suptitle(f"True vs Predicted on {len(recordings_ids)} recordings", fontsize=16)
+    fig.tight_layout()
+    out = FIGURES_DIR / f"fig_true_vs_predicted_on_several_recordings_{name}_{split}.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"Saved {out}")
+    plt.show()
 
 def main():
-    pass
+    data_path = DATA_FOR_ML
+    model = keras.models.load_model(CHECKPOINT, compile=False)
+    plot_true_vs_predicted_on_several_recordings(model, data_path, name="model13_3")
+    
 if __name__ == "__main__":
     main()
