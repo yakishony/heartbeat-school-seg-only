@@ -81,6 +81,49 @@ def on_upload(audio_path):
     fig = plot_plain_signal_interactive(signal, sr)
     return fig, signal.tolist(), sr # return the signal as a list to be used in the on_segment function - beacse gardio only supports that
 
+def _get_region_onsets(indices):
+    """Given all sample indices of a label (e.g. S1), return the first sample of each contiguous region."""
+    # difference between consecutive indices: 1 means same region, >1 means a new region started
+    diffs = np.diff(indices)
+
+    # True where a new region begins (gap > 1 sample)
+    is_new_region = diffs > 1
+
+    # positions *in the diff array* where new regions start
+    # e.g. indices=[1,2,3,7,8,9,12,13] → diffs=[1,1,4,1,1,3,1] → [F,F,T,F,F,T,F] → is_new_region at positions [2,5]
+    gap_positions_in_diff = np.where(is_new_region)[0]
+
+    # +1 because diff[i] = indices[i+1] - indices[i], so the new region's index in the original array is i+1
+    new_region_positions_in_indices = gap_positions_in_diff + 1
+
+    # prepend 0 to include the very first region
+    all_region_positions = np.concatenate(([0], new_region_positions_in_indices))
+
+    # index back into the original indices to get the actual sample numbers
+    onsets = indices[all_region_positions]
+    return onsets
+
+
+def claculate_BPM(pred):
+    """Calculate the BPM of the signal."""
+    # all sample indices labeled as S1 / S2
+    s1_indices = np.where(pred == 1)[0]
+    s2_indices = np.where(pred == 3)[0]
+
+    # first sample of each S1 / S2 region (= one onset per heartbeat)
+    s1_onsets = _get_region_onsets(s1_indices)
+    s2_onsets = _get_region_onsets(s2_indices)
+
+    # time (seconds) between consecutive heartbeats
+    s1_intervals_sec = np.diff(s1_onsets) / RATE_DS
+    s2_intervals_sec = np.diff(s2_onsets) / RATE_DS
+
+    # convert to beats per minute
+    bpm_s1 = 60 / s1_intervals_sec.mean()
+    bpm_s2 = 60 / s2_intervals_sec.mean()
+
+    # average the two estimates for robustness
+    return (bpm_s1 + bpm_s2) / 2
 
 def on_segment(signal_list, sr):
     """Run segmentation model on cached signal and return colored plot."""
@@ -103,7 +146,7 @@ def on_segment(signal_list, sr):
             overlap_end = overlap_samples_index_in_signal[1] - overlap_samples_index_in_signal[0]
             full_predicted_signal[overlap_samples_index_in_signal[1]:] = y_pred[overlap_end:]
 
-    return plot_segmented_signal_interactive(signal, full_predicted_signal, sr=sr)
+    return plot_segmented_signal_interactive(signal, full_predicted_signal, sr=sr), claculate_BPM(full_predicted_signal)
 
 
 HIDE_SHARE_CSS = "button.share-btn, .share-button, button[title='Share'] { display: none !important; }"  # CSS rule injected into the Gradio page to hide the non-functional share button on the audio widget
@@ -113,6 +156,7 @@ with gr.Blocks(title="Heartbeat PCG Segmentation", css=HIDE_SHARE_CSS) as demo:
     gr.Markdown(
         "Upload a heart sound WAV recording (≥ 2 s). "
         "The model segments it into **S1**, **systole**, **S2**, **diastole**, and **unannotated**.  \n"
+        "In addition BPM value is calculated based on the S1 and S2 regions. \n"
         "Use the **scroll wheel to zoom** and **drag to pan** on the plot."
     )
     signal_state = gr.State(None)
@@ -121,13 +165,14 @@ with gr.Blocks(title="Heartbeat PCG Segmentation", css=HIDE_SHARE_CSS) as demo:
     with gr.Row():
         with gr.Column(scale=1):
             audio_in = gr.Audio(type="filepath", label="Upload PCG (.wav)", editable=False)
-            btn = gr.Button("Segment", variant="primary")
+            btn = gr.Button("Segment + BPM", variant="primary")
+            bpm_out = gr.Number(label="BPM", precision=1, interactive=False)
         with gr.Column(scale=3):
             plot_out = gr.Plot(label="Segmentation Result")
 
     audio_in.change(fn=on_upload, inputs=audio_in, outputs=[plot_out, signal_state, sr_state])  # triggered when a file is uploaded
     audio_in.stop_recording(fn=on_upload, inputs=audio_in, outputs=[plot_out, signal_state, sr_state])  # triggered when microphone recording stops
-    btn.click(fn=on_segment, inputs=[signal_state, sr_state], outputs=plot_out)  # triggered when "Segment" button is clicked
+    btn.click(fn=on_segment, inputs=[signal_state, sr_state], outputs=[plot_out, bpm_out])  # triggered when "Segment + BPM" button is clicked
 
 if __name__ == "__main__":
     demo.launch()
