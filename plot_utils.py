@@ -6,7 +6,7 @@ from env import FIGURES_DIR, RATE
 
 # Color mapping for each segmentation class
 LABEL_COLORS = {
-    0: "gray",
+    0: "gray",  # unannotated
     1: "red",     # S1
     2: "orange",  # systole
     3: "blue",    # S2
@@ -15,7 +15,7 @@ LABEL_COLORS = {
 
 # Display names for each segmentation class
 LABEL_NAMES = {
-    0: "unrecognized",
+    0: "unannotated",
     1: "S1",
     2: "systole",
     3: "S2",
@@ -64,13 +64,18 @@ def plot_segmented_signal_interactive(signal, y, sr, height=450, width=1100):
     return fig
 
 
-def plot_segmented_signal_on_ax(ax, signal, y, s=1, show_labels=True):
-    """Plot a color-coded signal on a given axes."""
+def plot_segmented_signal_on_ax(ax, signal, y, name=None, s=1, show_labels=True):
+    """Plot a color-coded signal if segmented is True, otherwise plot the original signal on a given axes."""
     t = np.arange(len(signal)) / RATE
+    if name is None:
+        name = "segmented_signal"
     for label, color in LABEL_COLORS.items():
         mask = y == label
         ax.scatter(t[mask], signal[mask], s=s, c=color,
                    label=LABEL_NAMES[label] if show_labels else None)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.set_title(f"{name} segmented")
 
 
 def plot_recording(rec_id, dataset, name, xl=None, yl=None, sa_fig: bool = False):
@@ -81,8 +86,6 @@ def plot_recording(rec_id, dataset, name, xl=None, yl=None, sa_fig: bool = False
         ax.set_xlim(xl)
     if yl:
         ax.set_ylim(yl)
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude")
     ax.set_title(f"Recording {rec_id} {name}")
     ax.legend(markerscale=6)
     fig.tight_layout()

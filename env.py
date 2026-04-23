@@ -24,5 +24,5 @@ RATE_DS = RATE // DOWNSAMPLE_FACTOR  # 1000
 TYPES = ['TV', 'MV', 'PV', 'Phc', 'AV']
 # Segmentation categories
 CLASSES = [0, 1, 2, 3, 4]
-CATEGORY_NAMES = ['background', 'S1', 'systolic', 'S2', 'diastole']
+CATEGORY_NAMES = ['unannotated', 'S1', 'systolic', 'S2', 'diastole']
 

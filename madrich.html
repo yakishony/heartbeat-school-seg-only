@@ -24,7 +24,7 @@
 <h1>מדריך למפתח — Heartbeat PCG Segmentation</h1>
 
 <p>
-מסמך זה מציג את כל קבצי הפרויקט, תוכנם, משתניהם המרכזיים והפונקציות שבהם. הפרויקט מבצע סגמנטציה של הקלטות קול לב (PCG) — סיווג כל נקודת זמן ל-S1, Systole, S2, Diastole או Background — באמצעות רשת עצבית עמוקה מסוג Conv1D-BiGRU (U-Net).
+מסמך זה מציג את כל קבצי הפרויקט, תוכנם, משתניהם המרכזיים והפונקציות שבהם. הפרויקט מבצע סגמנטציה של הקלטות קול לב (PCG) — סיווג כל נקודת זמן ל-S1, Systole, S2, Diastole או Unannotated — באמצעות רשת עצבית עמוקה מסוג Conv1D-BiGRU (U-Net).
 </p>
 
 <h2>מבנה תיקיות הפרויקט</h2>
@@ -75,7 +75,7 @@
 <tr><td><code>RATE_DS</code></td><td>int</td><td>קצב הדגימה לאחר Downsampling: 1,000 Hz.</td></tr>
 <tr><td><code>TYPES</code></td><td>list[str]</td><td>רשימת סוגי ההקלטות לפי מיקום הסטטוסקופ (TV, MV, PV, Phc, AV).</td></tr>
 <tr><td><code>CLASSES</code></td><td>list[int]</td><td>רשימת הקטגוריות כמספרים שלמים (0–4).</td></tr>
-<tr><td><code>CATEGORY_NAMES</code></td><td>list[str]</td><td>שמות הקטגוריות: background, S1, systolic, S2, diastole.</td></tr>
+<tr><td><code>CATEGORY_NAMES</code></td><td>list[str]</td><td>שמות הקטגוריות: unannotated, S1, systolic, S2, diastole.</td></tr>
 </table>
 </div>
 
@@ -102,7 +102,7 @@
 <tr><th>משתנה</th><th>סוג</th><th>תפקיד</th></tr>
 <tr><td><code>dataset</code></td><td>dict</td><td>מילון שמפתחותיו הם rec_id (מחרוזת מזהה הקלטה) וערכיו הם מילונים עם signal, sr, y, type.</td></tr>
 <tr><td><code>missing_annotations</code></td><td>list[str]</td><td>רשימת rec_id של הקלטות שאין להן קובץ TSV (annotations).</td></tr>
-<tr><td><code>y</code></td><td>np.ndarray</td><td>וקטור תוויות — מספר שלם לכל דגימה (0=background, 1=S1, 2=systolic, 3=S2, 4=diastole).</td></tr>
+<tr><td><code>y</code></td><td>np.ndarray</td><td>וקטור תוויות — מספר שלם לכל דגימה (0=unannotated, 1=S1, 2=systolic, 3=S2, 4=diastole).</td></tr>
 <tr><td><code>tsv_files</code></td><td>dict</td><td>מילון שממפה rec_id לנתיב קובץ TSV (annotations) בדיסק.</td></tr>
 </table>
 
@@ -127,7 +127,7 @@
 <div class="file-section">
 
 <h4>תפקיד</h4>
-<p>ניתוח חקרני (EDA) של הדאטא — יצירת טבלאות סיכום, גרפי התפלגות (היסטוגרמה, Pie chart), ספקטרום FFT, ואחוז דגימות unrecognized לפי נקודת זמן.</p>
+<p>ניתוח חקרני (EDA) של הדאטא — יצירת טבלאות סיכום, גרפי התפלגות (היסטוגרמה, Pie chart), ספקטרום FFT, ואחוז דגימות unannotated לפי נקודת זמן.</p>
 
 <h4>מיקום</h4>
 <p><code>heartbeat-school-seg_only/understand_data.py</code></p>
@@ -139,9 +139,9 @@
 <table>
 <tr><th>משתנה</th><th>סוג</th><th>תפקיד</th></tr>
 <tr><td><code>df</code> (ב-<code>build_summary</code>)</td><td>pd.DataFrame</td><td>טבלת סיכום — שורה לכל הקלטה, עם עמודות rec_id, type, sr, n_samples, length_sec.</td></tr>
-<tr><td><code>counts</code> (ב-<code>plot_category_pie</code>)</td><td>np.ndarray</td><td>מערך בגודל 5 — מספר דגימות הזמן הכולל לכל קטגוריה (background, S1, systolic, S2, diastole).</td></tr>
-<tr><td><code>labels</code> (ב-<code>plot_unrecognized_by_timestamp</code>)</td><td>np.ndarray</td><td>מטריצה (n_recordings × n_timestamps) של כל התוויות — טעונה מקבצי .npy.</td></tr>
-<tr><td><code>pct_unrecognized</code></td><td>np.ndarray</td><td>וקטור — אחוז ההקלטות עם תווית 0 (unrecognized) בכל נקודת זמן.</td></tr>
+<tr><td><code>counts</code> (ב-<code>plot_category_pie</code>)</td><td>np.ndarray</td><td>מערך בגודל 5 — מספר דגימות הזמן הכולל לכל קטגוריה (unannotated, S1, systolic, S2, diastole).</td></tr>
+<tr><td><code>labels</code> (ב-<code>plot_unannotated_by_timestamp</code>)</td><td>np.ndarray</td><td>מטריצה (n_recordings × n_timestamps) של כל התוויות — טעונה מקבצי .npy.</td></tr>
+<tr><td><code>pct_unannotated</code></td><td>np.ndarray</td><td>וקטור — אחוז ההקלטות עם תווית 0 (unannotated) בכל נקודת זמן.</td></tr>
 </table>
 
 <h4>פונקציות</h4>
@@ -152,7 +152,7 @@
 <tr><td><code>plot_stacked_histogram_by_type(df)</code></td><td>היסטוגרמה מוערמת של אורכי הקלטות לפי סוג.</td></tr>
 <tr><td><code>plot_type_pie(df)</code></td><td>גרף עוגה של התפלגות סוגי ההקלטות.</td></tr>
 <tr><td><code>plot_category_pie(dataset)</code></td><td>גרף עוגה של התפלגות דגימות הזמן לפי קטגוריה (S1, S2, ...).</td></tr>
-<tr><td><code>plot_unrecognized_by_timestamp()</code></td><td>גרף עמודות — אחוז דגימות unrecognized לכל נקודת זמן.</td></tr>
+<tr><td><code>plot_unannotated_by_timestamp()</code></td><td>גרף עמודות — אחוז דגימות unannotated לכל נקודת זמן.</td></tr>
 <tr><td><code>plot_fft()</code></td><td>מציג ספקטרום FFT של הקלטה עם קווי הגבול של פילטר פס-הרצועה.</td></tr>
 </table>
 </div>
@@ -205,7 +205,7 @@
 <div class="file-section">
 
 <h4>תפקיד</h4>
-<p>חיתוך הקלטות ארוכות לחלונות באורך קבוע (2 שניות) — הגודל שהמודל מצפה לקבל. כולל שתי שיטות חיתוך: רגילה ומשופרת (שמפחיתה חלונות עם ריבוי דגימות unrecognized).</p>
+<p>חיתוך הקלטות ארוכות לחלונות באורך קבוע (2 שניות) — הגודל שהמודל מצפה לקבל. כולל שתי שיטות חיתוך: רגילה ומשופרת (שמפחיתה חלונות עם ריבוי דגימות unannotated).</p>
 
 <h4>מיקום</h4>
 <p><code>heartbeat-school-seg_only/split_data_into_fixed_length_recordings.py</code></p>
@@ -225,8 +225,8 @@
 <h4>פונקציות</h4>
 <table>
 <tr><th>פונקציה</th><th>תפקיד</th></tr>
-<tr><td><code>split_data_into_fixed_length_recordings(dataset)</code></td><td>חיתוך רגיל — חלונות רצופים באורך 2s. חלונות שכולם unrecognized נמחקים.</td></tr>
-<tr><td><code>split_data_into_fixed_length_recordings_without_unrecognized(dataset)</code></td><td>חיתוך משופר — כל חלון מתחיל מנקודה שאינה unrecognized, חלונות עם &gt;50% unrecognized נמחקים.</td></tr>
+<tr><td><code>split_data_into_fixed_length_recordings(dataset)</code></td><td>חיתוך רגיל — חלונות רצופים באורך 2s. חלונות שכולם unannotated נמחקים.</td></tr>
+<tr><td><code>split_data_into_fixed_length_recordings_without_unannotated(dataset)</code></td><td>חיתוך משופר — כל חלון מתחיל מנקודה שאינה unannotated, חלונות עם &gt;50% unannotated נמחקים.</td></tr>
 </table>
 </div>
 
@@ -300,7 +300,7 @@
 <tr><td><code>load_npy_pair(rec_id)</code></td><td>טוענת זוג קבצי .npy (signal + label) עבור rec_id.</td></tr>
 <tr><td><code>make_tf_dataset(rec_ids, batch_size)</code></td><td>בונה tf.data.Dataset מ-Generator — כולל shuffle, batch ו-prefetch.</td></tr>
 <tr><td><code>split_ids()</code></td><td>מחלקת את ה-rec_id ל-train/val/test (70/15/15%) לפי מטופלים (GroupShuffleSplit) למניעת Data Leakage.</td></tr>
-<tr><td><code>compute_seg_class_weights(rec_ids)</code></td><td>סופרת דגימות לכל מחלקה ומחשבת משקלות balanced. Background מקובע ל-1.0.</td></tr>
+<tr><td><code>compute_seg_class_weights(rec_ids)</code></td><td>סופרת דגימות לכל מחלקה ומחשבת משקלות balanced. Unannotated מקובע ל-1.0.</td></tr>
 <tr><td><code>weighted_loss(weights_tensor)</code></td><td>Closure — מחזירה פונקציית Loss שמכפילה Sparse Categorical CE במשקלות המחלקות.</td></tr>
 </table>
 </div>
@@ -407,7 +407,7 @@
 <table>
 <tr><th>משתנה</th><th>סוג</th><th>תפקיד</th></tr>
 <tr><td><code>LABEL_COLORS</code></td><td>dict[int, str]</td><td>מילון שממפה מספר מחלקה → צבע (gray, red, orange, blue, green).</td></tr>
-<tr><td><code>LABEL_NAMES</code></td><td>dict[int, str]</td><td>מילון שממפה מספר מחלקה → שם (unrecognized, S1, systole, S2, diastole).</td></tr>
+<tr><td><code>LABEL_NAMES</code></td><td>dict[int, str]</td><td>מילון שממפה מספר מחלקה → שם (unannotated, S1, systole, S2, diastole).</td></tr>
 </table>
 
 <h4>פונקציות</h4>

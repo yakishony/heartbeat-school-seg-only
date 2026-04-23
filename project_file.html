@@ -30,7 +30,7 @@
 המודל הוא רשת עצבית עמוקה מסוג <strong>Conv1D-BiGRU</strong> לסגמנטציה בלבד, המבוססת על ארכיטקטורת <strong>U-Net</strong>. הרשת מקבלת כקלט הקלטת PCG בת 2 שניות (2,000 נקודות זמן לאחר Downsampling) ומפיקה פלט יחיד:
 </p>
 <ul>
-<li><strong>ראש סגמנטציה (Segmentation Head)</strong> — סיווג כל נקודת זמן לאחד מ-5 מצבים: S1, S2, Systole, Diastole, Background.</li>
+<li><strong>ראש סגמנטציה (Segmentation Head)</strong> — סיווג כל נקודת זמן לאחד מ-5 מצבים: S1, S2, Systole, Diastole, Unannotated.</li>
 </ul>
 
 <div class="arch-box">
@@ -163,7 +163,7 @@ Input: (2000, 1)
 │     _balanced_class_weights(counts)          │
 ├──────────────────────────────────────────────┤
 │ weight(c) = total / (n_classes × count(c))   │
-│ Background weight forced to 1.0              │
+│ Unannotated weight forced to 1.0              │
 └──────────────────────────────────────────────┘
 </div>
 
@@ -171,7 +171,7 @@ Input: (2000, 1)
 <strong>weighted_loss</strong> — פונקציית closure שמחזירה פונקציית Loss מותאמת. מקבלת טנזור משקלות מחלקות ומחזירה פונקציה <code>loss_fn(y_true, y_pred)</code> שמחשבת Sparse Categorical Cross-Entropy ומכפילה כל דגימה במשקל המחלקה שלה. כך מחלקות נדירות (כמו S1, S2) מקבלות עונש גבוה יותר.
 </p>
 <p>
-<strong>_balanced_class_weights</strong> — פונקציה שמחשבת משקלות מאוזנים בסגנון sklearn: <code>total / (n_classes × count)</code>. משקל מחלקת Background מקובע ל-1.0 כדי למנוע השפעה מוגזמת שלה.
+<strong>_balanced_class_weights</strong> — פונקציה שמחשבת משקלות מאוזנים בסגנון sklearn: <code>total / (n_classes × count)</code>. משקל מחלקת Unannotated מקובע ל-1.0 כדי למנוע השפעה מוגזמת שלה.
 </p>
 <p>
 המדד (metric) היחיד שהמודל עוקב אחריו הוא <code>accuracy</code> הסטנדרטי של Keras.
@@ -202,7 +202,7 @@ Input: (2000, 1)
 
 <div class="figure-placeholder">
 [Figure: fig_confusion_matrix_seg_model_13.png]<br>
-מטריצת בלבול מנורמלת עבור הסגמנטציה — 5 מחלקות: Background, S1, Systolic, S2, Diastole.
+מטריצת בלבול מנורמלת עבור הסגמנטציה — 5 מחלקות: Unannotated, S1, Systolic, S2, Diastole.
 </div>
 
 
@@ -226,8 +226,8 @@ Input: (2000, 1)
 <tr><td>GRU Units</td><td>128 (× 2 = 256 bidirectional)</td><td>מספר היחידות בכל כיוון של ה-BiGRU.</td></tr>
 <tr><td>Dropout Rates</td><td>0.1, 0.2, 0.2</td><td>שיעורי Dropout שעולים בהדרגה: Encoder block 1 (0.1), Encoder block 2 (0.2), Decoder block 1 (0.2).</td></tr>
 <tr><td>Recurrent Dropout</td><td>0.2</td><td>Dropout בתוך המצב הפנימי של ה-GRU (בשתי שכבות ה-BiGRU).</td></tr>
-<tr><td>Segmentation Classes</td><td>5</td><td>Background, S1, Systolic, S2, Diastole.</td></tr>
-<tr><td>Seg Class Weights</td><td>{BG: 1.0, S1: 1.015, Sys: 0.894, S2: 1.161, Dia: 0.523}</td><td>משקלות מאוזנים לפי שכיחות. Background מקובע ל-1.0.</td></tr>
+<tr><td>Segmentation Classes</td><td>5</td><td>Unannotated, S1, Systolic, S2, Diastole.</td></tr>
+<tr><td>Seg Class Weights</td><td>{Unann: 1.0, S1: 1.015, Sys: 0.894, S2: 1.161, Dia: 0.523}</td><td>משקלות מאוזנים לפי שכיחות. Unannotated מקובע ל-1.0.</td></tr>
 <tr><td>Input Length</td><td>2,000 timesteps</td><td>2 שניות בקצב דגימה של 1,000 Hz (לאחר Downsampling ×4 מ-4,000 Hz).</td></tr>
 <tr><td>Train/Val/Test Split</td><td>70% / 15% / 15%</td><td>חלוקה לפי מטופלים (GroupShuffleSplit) למניעת Data Leakage.</td></tr>
 </table>
@@ -278,14 +278,14 @@ Input: (2000, 1)
 
 <tr>
   <td>model6</td>
-  <td>encoder-decoder + less unrecognized splitting</td>
-  <td>שיטת חיתוך חדשה שמתחילה כל חלון של 2 שניות מנקודה שאינה unrecognized, ומוחקת חלונות עם יותר מ-50% unrecognized.</td>
+  <td>encoder-decoder + less unannotated splitting</td>
+  <td>שיטת חיתוך חדשה שמתחילה כל חלון של 2 שניות מנקודה שאינה unannotated, ומוחקת חלונות עם יותר מ-50% unannotated.</td>
   <td>הפחתת רעש בדאטא, אך צמצום משמעותי בכמות ההקלטות.</td>
 </tr>
 
 <tr>
   <td>model7</td>
-  <td>U-Net + less unrecognized</td>
+  <td>U-Net + less unannotated</td>
   <td>הוספת Skip Connections מסוג U-Net — שרשור הפלט מה-Encoder ישירות ל-Decoder.</td>
   <td>שיפור משמעותי בסגמנטציה — ה-Skip Connections מאפשרים לשחזר פרטים עדינים שאבדו בדחיסה.</td>
 </tr>
@@ -307,7 +307,7 @@ Input: (2000, 1)
 <tr>
   <td>model10</td>
   <td>normalization per-recording + regular split</td>
-  <td>שינוי הנורמליזציה לפי מקסימום פרטי של כל הקלטה (במקום מקסימום גלובלי). חזרה לשיטת חיתוך רגילה (מחיקת חלונות שכולם unrecognized בלבד).</td>
+  <td>שינוי הנורמליזציה לפי מקסימום פרטי של כל הקלטה (במקום מקסימום גלובלי). חזרה לשיטת חיתוך רגילה (מחיקת חלונות שכולם unannotated בלבד).</td>
   <td>נורמליזציה פרטית נותנת אחידות טובה יותר. שיטת החיתוך הרגילה שומרת יותר דאטא. Seg acc ≈ 76%, Murmur acc ≈ 68%.</td>
 </tr>
 
@@ -321,7 +321,7 @@ Input: (2000, 1)
 <tr>
   <td>model_13</td>
   <td>seg-only, two stacked BiGRUs, U-Net</td>
-  <td>הסרת ראש האוושה — מודל סגמנטציה בלבד. הוספת שכבת BiGRU שנייה מוערמת ב-Bottleneck. חיתוך עם less unrecognized. שמירת תיאור מודל לצד ה-checkpoints. שינוי patience ל-7 ו-ReduceLR factor ל-0.6.</td>
+  <td>הסרת ראש האוושה — מודל סגמנטציה בלבד. הוספת שכבת BiGRU שנייה מוערמת ב-Bottleneck. חיתוך עם less unannotated. שמירת תיאור מודל לצד ה-checkpoints. שינוי patience ל-7 ו-ReduceLR factor ל-0.6.</td>
   <td><strong>המודל הסופי.</strong> שיפור משמעותי: Seg acc ≈ 86.4% (val), 86.3% (test). שתי שכבות BiGRU מעמיקות את הלמידה הזמנית. val_loss = 0.327.</td>
 </tr>
 </table>
@@ -339,12 +339,12 @@ model5 — מעבר לארכיטקטורת Encoder-Decoder.
 </div>
 
 <div class="figure-placeholder">
-[Figure: fig_training_curves_u_net_less_unrecognized_model7.png]<br>
+[Figure: fig_training_curves_u_net_less_unannotated_model7.png]<br>
 model7 — הוספת U-Net Skip Connections.
 </div>
 
 <div class="figure-placeholder">
-[Figure: fig_training_curves_less_unrecognized_murmur_cls_model8.png]<br>
+[Figure: fig_training_curves_less_unannotated_murmur_cls_model8.png]<br>
 model8 — הוספת ראש זיהוי אוושה (Dual-Head).
 </div>
 
@@ -388,16 +388,16 @@ Loss(y, ŷ) = −log(ŷ[y])
 
 <h3>7.2 שקלול מחלקות (Class Weighting)</h3>
 <p>
-מכיוון שהדאטא-סט אינו מאוזן (למשל, מחלקת Diastole שולטת בסגמנטציה בעוד Background נדירה יחסית), שימוש ב-Cross-Entropy רגיל יגרום למודל "להתעצלן" ולחזות תמיד את המחלקה הנפוצה. לכן, כל דגימה מוכפלת במשקל ההפוך לשכיחות המחלקה שלה:
+מכיוון שהדאטא-סט אינו מאוזן (למשל, מחלקת Diastole שולטת בסגמנטציה בעוד Unannotated נדירה יחסית), שימוש ב-Cross-Entropy רגיל יגרום למודל "להתעצלן" ולחזות תמיד את המחלקה הנפוצה. לכן, כל דגימה מוכפלת במשקל ההפוך לשכיחות המחלקה שלה:
 </p>
 <div class="formula">
 weight(class_c) = total_samples / (n_classes × count(class_c))
 </div>
 <p>
-כך מחלקות נדירות (כמו Background, S2) מקבלות משקל גבוה יותר, ומחלקות נפוצות (כמו Diastole) מקבלות משקל נמוך — המודל "משלם" יותר על טעות במחלקה נדירה. משקל מחלקת Background מקובע ל-1.0. המשקלות שחושבו מהדאטא:
+כך מחלקות נדירות (כמו Unannotated, S2) מקבלות משקל גבוה יותר, ומחלקות נפוצות (כמו Diastole) מקבלות משקל נמוך — המודל "משלם" יותר על טעות במחלקה נדירה. משקל מחלקת Unannotated מקובע ל-1.0. המשקלות שחושבו מהדאטא:
 </p>
 <div class="formula">
-{Background: 1.0, S1: 1.015, Systolic: 0.894, S2: 1.161, Diastole: 0.523}
+{Unannotated: 1.0, S1: 1.015, Systolic: 0.894, S2: 1.161, Diastole: 0.523}
 </div>
 
 <h3>7.3 Loss לסגמנטציה (<code>weighted_loss</code>)</h3>
@@ -405,7 +405,7 @@ weight(class_c) = total_samples / (n_classes × count(class_c))
 הפונקציה <code>weighted_loss(weights_tensor)</code> היא פונקציית <strong>closure</strong> — היא מקבלת את טנזור המשקלות כפרמטר ומחזירה פונקציה פנימית <code>loss_fn(y_true, y_pred)</code> שהיא פונקציית ה-Loss בפועל. מבנה זה נדרש מכיוון ש-Keras מצפה לפונקציית Loss עם חתימה קבועה של <code>(y_true, y_pred)</code> בלבד — ה-closure מאפשרת "ללכוד" את המשקלות בתוך הפונקציה מבלי להעבירם כפרמטר נוסף.
 </p>
 <p>
-הפונקציה הפנימית <code>loss_fn</code> פועלת <strong>ברמת נקודת זמן</strong> — כל אחת מ-2,000 הנקודות בכל הקלטה מקבלת Loss בהתאם למחלקה האמיתית שלה (S1/S2/Systole/Diastole/Background) ומוכפלת במשקל המתאים. הפונקציה מחזירה טנזור בגודל <code>(batch_size, 2000)</code>, ו-Keras מחשבת עליו ממוצע (<code>reduce_mean</code>) על פני כל נקודות הזמן וכל ההקלטות ב-Batch כדי לקבל את ה-Loss הסופי (סקלר).
+הפונקציה הפנימית <code>loss_fn</code> פועלת <strong>ברמת נקודת זמן</strong> — כל אחת מ-2,000 הנקודות בכל הקלטה מקבלת Loss בהתאם למחלקה האמיתית שלה (S1/S2/Systole/Diastole/Unannotated) ומוכפלת במשקל המתאים. הפונקציה מחזירה טנזור בגודל <code>(batch_size, 2000)</code>, ו-Keras מחשבת עליו ממוצע (<code>reduce_mean</code>) על פני כל נקודות הזמן וכל ההקלטות ב-Batch כדי לקבל את ה-Loss הסופי (סקלר).
 </p>
 
 

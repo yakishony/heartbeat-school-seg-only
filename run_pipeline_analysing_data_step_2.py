@@ -9,7 +9,7 @@ import numpy as np
 from env import DOWNSAMPLE_FACTOR
 from  download_data_and_annotate_step1 import load_dataset_raw, save_dataset_as_npy
 from run_pipline_analysing_utils import normalize_dataset, bandpass_filter_dataset, downsample_dataset
-from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings_without_unrecognized
+from split_data_into_fixed_length_recordings import split_data_into_fixed_length_recordings_without_unannotated
 
 
 
@@ -19,8 +19,8 @@ def run():
     dataset_raw, missing = load_dataset_raw()
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
 
-    # 2. Split into fixed length recordings (less unrecognized)
-    dataset_split = split_data_into_fixed_length_recordings_without_unrecognized(dataset_raw)
+    # 2. Split into fixed length recordings (less unannotated)
+    dataset_split = split_data_into_fixed_length_recordings_without_unannotated(dataset_raw)
     del dataset_raw
     gc.collect()
 

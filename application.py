@@ -112,7 +112,7 @@ with gr.Blocks(title="Heartbeat PCG Segmentation", css=HIDE_SHARE_CSS) as demo:
     gr.Markdown("# Heartbeat PCG Segmentation")
     gr.Markdown(
         "Upload a heart sound WAV recording (≥ 2 s). "
-        "The model segments it into **S1**, **systole**, **S2**, **diastole**, and **unrecognized**.  \n"
+        "The model segments it into **S1**, **systole**, **S2**, **diastole**, and **unannotated**.  \n"
         "Use the **scroll wheel to zoom** and **drag to pan** on the plot."
     )
     signal_state = gr.State(None)

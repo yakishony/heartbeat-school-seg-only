@@ -91,7 +91,7 @@ def _balanced_class_weights(counts_of_samples_for_each_class):
     return total_samples_num / (n_classes * counts_of_samples_for_each_class + 1e-8) # add 1e-8 to avoid division by zero
 
 
-def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES), background_weight_is_1=True):
+def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES), unannotated_weight_is_1=True):
     """Compute 1-proportion weights for segmentation from training labels."""
     # count the propotions:
     counts = np.zeros(num_classes, dtype=np.float64)
@@ -100,7 +100,7 @@ def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES), background_weig
         for c in range(num_classes):
             counts[c] += np.sum(labels == c)
     weights = _balanced_class_weights(counts)
-    if background_weight_is_1:
+    if unannotated_weight_is_1:
         weights[0] = 1.0  
     print("Seg class counts:", dict(enumerate(counts.astype(int))))
     print("Seg class weights:", dict(enumerate(np.round(weights, 3))))

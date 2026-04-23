@@ -39,9 +39,9 @@ def split_data_into_fixed_length_recordings(dataset:{}):
     print("Count full 0 splits:", count_full_0_splits)
     return split_dataset
             
-def split_data_into_fixed_length_recordings_without_unrecognized(dataset:{}):
-    """Split the dataset into fixed length recordings without unrecognized.
-    every recoding with LEN_REC wont have above LEN_REC/2 unrecognized labeled timestamps """
+def split_data_into_fixed_length_recordings_without_unannotated(dataset:{}):
+    """Split the dataset into fixed length recordings without unannotated.
+    every recoding with LEN_REC wont have above LEN_REC/2 unannotated labeled timestamps """
     split_dataset = {}
     count_deleted_splits = 0
 
@@ -65,7 +65,7 @@ def split_data_into_fixed_length_recordings_without_unrecognized(dataset:{}):
                 end_sample_index = sampels_num - 1
                 start_sample_index = end_sample_index - SPLIT_SAMPLES
 
-            # check if more than half of the split is unrecognized
+            # check if more than half of the split is unannotated
             unreconized_count = (rec['y'][start_sample_index:end_sample_index] == 0).sum()
 
             c_sample_index = end_sample_index
@@ -84,8 +84,8 @@ def split_data_into_fixed_length_recordings_without_unrecognized(dataset:{}):
         count_samples_that_didnt_got_into_new_dataset = sampels_num - count_samples_that_got_into_new_dataset
         count_deleted_splits_for_this_recording = count_samples_that_didnt_got_into_new_dataset // SPLIT_SAMPLES
         count_deleted_splits += count_deleted_splits_for_this_recording
-    print("Split unrecognized dataset length:", len(split_dataset))
-    print("Count deleted splits for unrecognized:", count_deleted_splits)
+    print("Split unannotated dataset length:", len(split_dataset))
+    print("Count deleted splits for unannotated:", count_deleted_splits)
 
     return split_dataset
 
@@ -94,11 +94,11 @@ def split_data_into_fixed_length_recordings_without_unrecognized(dataset:{}):
 def run():
     dataset_raw, missing = load_dataset_raw()
     print(f"Loaded {len(dataset_raw)} recordings ({len(missing)} missing annotations)")
-    dataset_split_without_unreconized = split_data_into_fixed_length_recordings_without_unrecognized(dataset_raw)
+    dataset_split_without_unannotated = split_data_into_fixed_length_recordings_without_unannotated(dataset_raw)
     dataset_split = split_data_into_fixed_length_recordings(dataset_raw)
     del dataset_raw
     gc.collect()
-    plot_category_pie(dataset_split_without_unreconized, name="fig_category_pie_with_spliting_method_of_less_unrecognized_samples")
+    plot_category_pie(dataset_split_without_unannotated, name="fig_category_pie_with_spliting_method_of_less_unannotated_samples")
     plot_category_pie(dataset_split, name="fig_category_pie_with_regular_spliting_method")
   
 
