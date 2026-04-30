@@ -87,13 +87,13 @@ def _balanced_class_weights(counts_of_samples_for_each_class):
     """sklearn-style 'balanced' weights: total / (n_classes * count_per_class).
     Mean weight across classes = 1.0, so overall loss scale is unchanged."""
     n_classes = len(counts_of_samples_for_each_class)
-    total_samples_num = counts_of_samples_for_each_class.sum() 
-    return total_samples_num / (n_classes * counts_of_samples_for_each_class + 1e-8) # add 1e-8 to avoid division by zero
+    total_samples_num = counts_of_samples_for_each_class.sum()
+    return total_samples_num / (n_classes * counts_of_samples_for_each_class + 1e-8)  # +1e-8 to avoid division by zero
 
 
 def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES), unannotated_weight_is_1=True):
     """Compute 1-proportion weights for segmentation from training labels."""
-    # count the propotions:
+    # count how many samples belong to each class across all training recordings
     counts = np.zeros(num_classes, dtype=np.float64)
     for rid in rec_ids:
         labels = np.load(DATA_FOR_ML / "labels" / f"{rid}.npy")
@@ -101,16 +101,18 @@ def compute_seg_class_weights(rec_ids, num_classes=len(CLASSES), unannotated_wei
             counts[c] += np.sum(labels == c)
     weights = _balanced_class_weights(counts)
     if unannotated_weight_is_1:
-        weights[0] = 1.0  
+        weights[0] = 1.0  # don't up-weight unannotated — it's scarce but uninformative
     print("Seg class counts:", dict(enumerate(counts.astype(int))))
     print("Seg class weights:", dict(enumerate(np.round(weights, 3))))
     return tf.constant(weights, dtype=tf.float32)
 
 
 def weighted_loss(weights_tensor):
-    """Returns a named loss function that penalizes mistakes on rare classes more heavily."""
+    """Returns a named loss function that penalizes mistakes on rare classes more heavily.
+    This is a closure: it captures weights_tensor and returns a function compatible with Keras."""
     def loss_fn(y_true, y_pred):
+        # look up the weight for each sample's true class
         weights = tf.gather(weights_tensor, tf.cast(y_true, tf.int32))
         loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
-        return loss * weights
+        return loss * weights  # element-wise: rare-class samples contribute more to the gradient
     return loss_fn
