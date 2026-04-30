@@ -123,5 +123,3 @@ if __name__ == "__main__":
     dataset, missing = load_dataset_raw()
     print(f"Loaded recordings: {len(dataset)}")
     print(f"Missing annotations: {len(missing)}")
-    for rec_id, rec in list(dataset.items())[:3]:
-        print(f"  {rec_id}: sr={rec['sr']}, len={len(rec['signal'])}, labels={np.unique(rec['y'])}")
