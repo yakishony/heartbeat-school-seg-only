@@ -41,8 +41,6 @@ def build_sample_labels(tsv_path, signal_length, sr):
     n_annotated_as_0 = int((annotated & (y == 0)).sum())
     return y, n_unannotated, n_annotated_as_0
 
-## ביחדחדדלדךדך
-
 def index_tsv_files(path):
     tsv_files = {}
     for root, _, files in os.walk(path):
