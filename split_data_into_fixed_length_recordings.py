@@ -8,15 +8,17 @@ LEN_REC = 2                              # Window length in seconds
 SPLIT_SAMPLES = int(LEN_REC * RATE)      # Samples per window at original rate (8,000)
 SAMPLES_NUM = int(LEN_REC * RATE_DS)     # Samples per window after downsampling (2,000) — used by ML.py
 
-def split_data_into_fixed_length_recordings(dataset:{}): 
+def split_data_into_fixed_length_recordings(dataset:{}):
+    """Basic splitting: cut each recording into consecutive 2s windows.
+    Windows that are entirely unannotated (all labels == 0) are discarded."""
     split_dataset = {}
     count_full_0_splits = 0
     count_deleted_recordings = 0
 
     for rec_id, rec in dataset.items():
-        num_iterations = len(rec['signal']) // SPLIT_SAMPLES
+        num_iterations = len(rec['signal']) // SPLIT_SAMPLES  # how many full windows fit
 
-        if num_iterations == 0:
+        if num_iterations == 0:  # recording shorter than one window
             count_deleted_recordings += 1
             continue
 
@@ -25,7 +27,7 @@ def split_data_into_fixed_length_recordings(dataset:{}):
             end_sample = start_sample + SPLIT_SAMPLES
 
             y = rec['y'][start_sample:end_sample]
-            if (y == 0).all():
+            if (y == 0).all():  # skip windows with no useful annotations
                 count_full_0_splits += 1
                 continue
 
@@ -47,25 +49,26 @@ def split_data_into_fixed_length_recordings_without_unannotated(dataset:{}):
 
     for rec_id, rec in dataset.items():
         sampels_num = len(rec['signal'])
-        if sampels_num < SPLIT_SAMPLES:
+        if sampels_num < SPLIT_SAMPLES:  # too short for even one window
             continue
         c_sample_index = 0
         c_label = rec['y'][c_sample_index]
         i = 0
         while c_sample_index < sampels_num-1:
+            # skip forward past unannotated samples to find the next annotated region
             while c_label == 0 and c_sample_index < sampels_num-1:
                 c_sample_index += 1
                 c_label = rec['y'][c_sample_index]
-            if c_label == 0:
+            if c_label == 0:  # reached end of signal without finding annotated data
                 break
             start_sample_index = c_sample_index
             end_sample_index = start_sample_index + SPLIT_SAMPLES
 
-            if end_sample_index >= sampels_num-1: # if the split is the last
+            if end_sample_index >= sampels_num-1:  # last window: align to end of signal
                 end_sample_index = sampels_num - 1
                 start_sample_index = end_sample_index - SPLIT_SAMPLES
 
-            # check if more than half of the split is unannotated
+            # discard windows where more than half the samples are unannotated
             unreconized_count = (rec['y'][start_sample_index:end_sample_index] == 0).sum()
 
             c_sample_index = end_sample_index
