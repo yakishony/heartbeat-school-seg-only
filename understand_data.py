@@ -92,7 +92,7 @@ def plot_unannotated_by_timestamp():
 
 
 def plot_fft(data_set=None, signal_id=None, title="FFT", sr=RATE):
-    """ Import BANDPASS filter parameters from run_pipline_analysing_utils.py and shows the bandpass lims on the x axis"""
+    """Plot the frequency spectrum (FFT) of a single recording with bandpass filter boundaries."""
 
     if data_set is None:
         data_set, _ = load_dataset_raw()
@@ -101,18 +101,18 @@ def plot_fft(data_set=None, signal_id=None, title="FFT", sr=RATE):
 
     signal = data_set[signal_id]['signal']
     n = len(signal)
-    freqs = np.fft.rfftfreq(n, d=1.0 / sr)
-    magnitudes = np.abs(np.fft.rfft(signal)) / n
+    freqs = np.fft.rfftfreq(n, d=1.0 / sr)        # frequency bins (0 to Nyquist)
+    magnitudes = np.abs(np.fft.rfft(signal)) / n   # normalized magnitude spectrum
 
     plt.figure(figsize=(12, 5))
     plt.plot(freqs, magnitudes)
-    # Add red dotted vertical lines at BANDPASS_LOWCUT and BANDPASS_HIGHCUT
+    # show the bandpass filter boundaries as red dashed lines
     plt.axvline(BANDPASS_LOWCUT, color='red', linestyle='--', linewidth=1.5, label=f'Lowcut {BANDPASS_LOWCUT} Hz')
     plt.axvline(BANDPASS_HIGHCUT, color='red', linestyle='--', linewidth=1.5, label=f'Highcut {BANDPASS_HIGHCUT} Hz')
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Magnitude")
     plt.title(title)
-    plt.xlim(0, sr / 2)
+    plt.xlim(0, sr / 2)  # show up to Nyquist frequency
     plt.legend()
     plt.tight_layout()
     name = f"fig_{title}_{signal_id}.png"
@@ -123,7 +123,4 @@ def plot_fft(data_set=None, signal_id=None, title="FFT", sr=RATE):
     return signal_id
 
 if __name__ == "__main__":
-    # print_tail_middele_and_head_unannotated_precentage_from_recordings()
-    # plot_unannotated_by_timestamp()
-    # plot_pie_chart_of_murmur_distribution()
-    plot_fft()
+    pass
