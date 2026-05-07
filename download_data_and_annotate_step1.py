@@ -26,22 +26,26 @@ def download_dataset(local_dir=DATA_DOWNLOADED):
     return str(local_dir)
 
 def build_sample_labels(tsv_path, signal_length, sr):
-    """Convert interval annotations to per-sample labels."""
-    y = np.zeros(signal_length, dtype=np.int64)
-    annotated = np.zeros(signal_length, dtype=bool)
+    """Convert interval annotations (start_sec, end_sec, label) to a per-sample label array.
+    Returns (y, n_unannotated, n_annotated_as_0)."""
+    y = np.zeros(signal_length, dtype=np.int64)          # default label = 0 (unannotated)
+    annotated = np.zeros(signal_length, dtype=bool)       # tracks which samples were covered by any TSV row
     df = pd.read_csv(tsv_path, sep="\t", header=None, names=["start", "end", "label"])
 
+    # fill in the label for each annotated time interval
     for _, row in df.iterrows():
-        start_sample = max(int(row["start"] * sr), 0)
+        start_sample = max(int(row["start"] * sr), 0)    # convert seconds → sample index
         end_sample = min(int(row["end"] * sr), signal_length)
         y[start_sample:end_sample] = int(row["label"])
         annotated[start_sample:end_sample] = True
 
-    n_unannotated = int((~annotated).sum())
-    n_annotated_as_0 = int((annotated & (y == 0)).sum())
+    n_unannotated = int((~annotated).sum())               # samples not covered by any TSV row
+    n_annotated_as_0 = int((annotated & (y == 0)).sum())  # samples explicitly labeled 0 in TSV
     return y, n_unannotated, n_annotated_as_0
 
+
 def index_tsv_files(path):
+    """Scan directory tree and build a dict mapping rec_id → TSV file path."""
     tsv_files = {}
     for root, _, files in os.walk(path):
         for f in files:
@@ -69,24 +73,26 @@ def load_dataset_raw(path_to_load_data_from=None, use_cache=True): # (save to pi
     total_unannotated = 0
     total_annotated_as_0 = 0
 
+    # walk through all WAV files and pair each with its TSV annotations
     for root, _, files in os.walk(path_to_load_data_from):
         for f in files:
             if not f.endswith(".wav"):
                 continue
 
             rec_id = f.replace(".wav", "")
-            if rec_id not in tsv_files:
+            if rec_id not in tsv_files:          # no annotation file → skip
                 missing_annotations.append(rec_id)
                 continue
 
             sr, signal = wavfile.read(os.path.join(root, f))
-            if signal.ndim > 1:
+            if signal.ndim > 1:                  # stereo → mono (keep first channel)
                 signal = signal[:, 0]
 
             y, n_unannotated, n_annotated_as_0 = build_sample_labels(tsv_files[rec_id], len(signal), sr)
             total_samples += len(signal)
             total_unannotated += n_unannotated
             total_annotated_as_0 += n_annotated_as_0
+            # rec_id format: "PatientID_Type_Segment" → type is the auscultation location (AV, MV, etc.)
             dataset[rec_id] = {"signal": signal, "sr": sr, "y": y, 'type': rec_id.split('_')[1]}
 
     print(f"Unannotated (not covered by any TSV row, y=0 by default): "
