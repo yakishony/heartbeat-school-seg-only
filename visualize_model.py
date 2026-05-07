@@ -46,8 +46,8 @@ def plot_training_curves(history, name=None):
 def annotate_precision_recall(ax, cm):
     """Add per-class recall (right of rows), precision (below columns) and accuracy (bottom right) to confusion matrix."""
     n = cm.shape[0]
-    recall = np.diag(cm) / cm.sum(axis=1).clip(min=1) 
-    precision = np.diag(cm) / cm.sum(axis=0).clip(min=1)
+    recall = np.diag(cm) / cm.sum(axis=1).clip(min=1)      # TP / (TP+FN) per class
+    precision = np.diag(cm) / cm.sum(axis=0).clip(min=1)    # TP / (TP+FP) per class
 
     for i in range(n):
         ax.text(n - 0.5 + 0.4, i, f"{recall[i]:.2f}",
@@ -67,15 +67,16 @@ def annotate_precision_recall(ax, cm):
 
 GAP = 0.3  # vertical gap between truth and prediction traces (in signal amplitude units)
 def plot_truth_and_pred(ax, signal, y_true, y_pred, rec_id):
-    t = np.arange(len(signal)) / RATE_DS
+    """Plot truth (top) and prediction (bottom) color-coded on the same axes, separated by a gap."""
+    t = np.arange(len(signal)) / RATE_DS                  # time axis in seconds
     sig_range = signal.max() - signal.min()
-    shift = sig_range + GAP # a shift that is adjusted to each recording
+    shift = sig_range + GAP                                # shift prediction trace below truth
     for label, color in LABEL_COLORS.items():
         mask_true = y_true == label
         mask_pred = y_pred == label
-        ax.scatter(t[mask_true], signal[mask_true], s=0.3, c=color, label=LABEL_NAMES[label])
-        ax.scatter(t[mask_pred], signal[mask_pred] - shift, s=0.3, c=color)
-    ax.axhline(signal.min() - GAP / 2, color="k", linewidth=0.3, linestyle="--")
+        ax.scatter(t[mask_true], signal[mask_true], s=0.3, c=color, label=LABEL_NAMES[label])        # truth (top)
+        ax.scatter(t[mask_pred], signal[mask_pred] - shift, s=0.3, c=color)                           # prediction (bottom)
+    ax.axhline(signal.min() - GAP / 2, color="k", linewidth=0.3, linestyle="--")  # separator line
     ax.text(0.01, 0.95, "Truth", fontsize=7, va="top", transform=ax.transAxes)
     ax.text(0.01, 0.45, "Prediction", fontsize=7, va="top", transform=ax.transAxes)
     ax.set_title(rec_id, fontsize=8)
@@ -86,11 +87,12 @@ def plot_truth_and_pred(ax, signal, y_true, y_pred, rec_id):
 SPLIT_NAMES = ("all", "train", "val", "test")
 
 def _get_ids_for_split(data_path, split):
+    """Return recording IDs for the requested split (e.g. 'train', 'test', 'all', or 'train+val')."""
     if split == "all":
         return load_all_ids(data_path)
     train_ids, val_ids, test_ids = split_ids()
     split_map = {"train": train_ids, "val": val_ids, "test": test_ids}
-    parts = split.split("+") if "+" in split else [split]
+    parts = split.split("+") if "+" in split else [split]  # support combined splits like "train+val"
     ids = []
     for p in parts:
         assert p in split_map, f"unknown split '{p}', use train/val/test/all"
@@ -135,16 +137,17 @@ def plot_confusion_matrix(model, data_path, name=None, split="all", batch_size=B
     return all_true, all_pred
 
 def plot_true_vs_predicted_on_several_recordings(model, data_path, name=None, recordings_ids=None, split="test"):
+    """Pick random recordings from a split, predict each, and show truth vs prediction side by side."""
     if name is None:
         name = "true_vs_predicted_segmentation"
     if recordings_ids is None:
         all_ids = _get_ids_for_split(data_path, split)
-        recordings_ids = random.sample(all_ids, min(5, len(all_ids)))
+        recordings_ids = random.sample(all_ids, min(5, len(all_ids)))  # pick up to 5 random recordings
     fig, ax = plt.subplots(len(recordings_ids), 1, figsize=(14, 10))
     for i, rec_id in enumerate(recordings_ids):
         signal = np.load(data_path / "signals" / f"{rec_id}.npy")
         label = np.load(data_path / "labels" / f"{rec_id}.npy")
-        pred = model.predict(signal.reshape(1, -1, 1), verbose=0).argmax(axis=-1).squeeze()
+        pred = model.predict(signal.reshape(1, -1, 1), verbose=0).argmax(axis=-1).squeeze()  # reshape to (1, samples, 1) for model input
         plot_truth_and_pred(ax[i], signal, label, pred, rec_id)
     fig.suptitle(f"True vs Predicted on {len(recordings_ids)} recordings", fontsize=16)
     fig.tight_layout()
@@ -154,9 +157,8 @@ def plot_true_vs_predicted_on_several_recordings(model, data_path, name=None, re
     plt.show()
 
 def main():
-    data_path = DATA_FOR_ML
-    model = keras.models.load_model(CHECKPOINT, compile=False)
-    plot_true_vs_predicted_on_several_recordings(model, data_path, name="model13_3")
-    
+    pass
+
 if __name__ == "__main__":
     main()
+
