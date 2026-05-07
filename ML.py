@@ -3,7 +3,6 @@ import json
 import keras
 # layers: building blocks (Conv1D, Dense, etc.); Model: class that wires layers into a trainable network
 from keras import layers, Model
-# Path: object-oriented filesystem paths (e.g. Path("a") / "b" → "a/b")
 from pathlib import Path
 
 from ML_utils import make_tf_dataset, split_ids, compute_seg_class_weights, weighted_loss
@@ -34,16 +33,16 @@ def build_model(seq_len=SAMPLES_NUM, num_seg_classes=NUM_SEG_CLASSES):
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.1)(x)
     skip1 = x                                        # (2000, 64)
-    x = layers.MaxPool1D(pool_size=POOL_1)(x)        # (500, 64)
 
     # ── Encoder block 2 ──
+    x = layers.MaxPool1D(pool_size=POOL_1)(x)        # (500, 64)
     x = layers.Conv1D(128, 5, padding="same", activation="relu")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
     skip2 = x                                        # (500, 128)
-    x = layers.MaxPool1D(pool_size=POOL_2)(x)        # (125, 128)
-
+    
     # ── Bottleneck: two BiGRU ──
+    x = layers.MaxPool1D(pool_size=POOL_2)(x)        # (125, 128)
     x = layers.Bidirectional(
         layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2),
     )(x)
@@ -52,15 +51,16 @@ def build_model(seq_len=SAMPLES_NUM, num_seg_classes=NUM_SEG_CLASSES):
         layers.GRU(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2),
     )(x)
                                                   # (125, 256)
-    # ── Decoder block 1 ──
     x = layers.UpSampling1D(size=POOL_2)(x)           # (500, 256)
+
+    # ── Decoder block 1 ──
     x = layers.Concatenate()([x, skip2])               # (500, 384)
     x = layers.Conv1D(64, 5, padding="same", activation="relu")(x) # (500, 64)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.2)(x)
+    x = layers.UpSampling1D(size=POOL_1)(x)            # (2000, 64)
 
     # ── Decoder block 2 ──
-    x = layers.UpSampling1D(size=POOL_1)(x)            # (2000, 64)
     x = layers.Concatenate()([x, skip1])                # (2000, 128)
 
     seg_out = layers.Dense(
@@ -79,19 +79,22 @@ def main(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
 
     initial_epoch = 0
     if resume_checkpoint_path:
+        # resume training from a saved checkpoint
         print(f"Loading model from: {resume_checkpoint_path}")
         model = keras.models.load_model(resume_checkpoint_path)
         if from_scratch:
             run_name = input("Enter a name for this training run: ").strip()
         else:
+            # extract epoch number from filename (e.g. "epoch_042.keras" → 42)
             initial_epoch = int(Path(resume_checkpoint_path).stem.split("_")[-1])
             run_name = Path(resume_checkpoint_path).parent.name
     else:
+        # fresh training
         model = build_model()
         run_name = input("Enter a name for this training run: ").strip()
 
         model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0), 
+            optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0),  # clipnorm prevents exploding gradients
             loss=weighted_loss(seg_weights_tensor),
             metrics=["accuracy"]
         )
@@ -123,11 +126,11 @@ def main(resume_checkpoint_path: str | None = None, from_scratch: bool = False):
 
     metrics_csv = checkpoint_dir / "metrics.csv"
     callbacks = [
-        keras.callbacks.CSVLogger(str(metrics_csv), append=(initial_epoch > 0)), # append=True(initial_epoch > 0) - append to the existing file instead of overwriting it
-        keras.callbacks.ModelCheckpoint(filepath=str(checkpoint_dir / "epoch_{epoch:03d}.keras"), save_freq="epoch"),
-        keras.callbacks.ModelCheckpoint(filepath=str(checkpoint_dir / "best.keras"), monitor="val_loss", save_best_only=True, verbose=1),
-        keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=ReduceLROnPlateau_FACTOR, patience=ReduceLROnPlateau_PATIENCE, min_lr=ReduceLROnPlateau_MIN_LR, verbose=1), # verbose controlls how much info is being printed out
-        keras.callbacks.EarlyStopping(monitor="val_loss", patience=EARLY_STOPPING_PATIENCE, restore_best_weights=True, verbose=1),
+        keras.callbacks.CSVLogger(str(metrics_csv), append=(initial_epoch > 0)),  # log loss/acc per epoch to CSV
+        keras.callbacks.ModelCheckpoint(filepath=str(checkpoint_dir / "epoch_{epoch:03d}.keras"), save_freq="epoch"),  # save every epoch
+        keras.callbacks.ModelCheckpoint(filepath=str(checkpoint_dir / "best.keras"), monitor="val_loss", save_best_only=True, verbose=1),  # save best model
+        keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=ReduceLROnPlateau_FACTOR, patience=ReduceLROnPlateau_PATIENCE, min_lr=ReduceLROnPlateau_MIN_LR, verbose=1),  # reduce LR when stuck
+        keras.callbacks.EarlyStopping(monitor="val_loss", patience=EARLY_STOPPING_PATIENCE, restore_best_weights=True, verbose=1),  # stop early if no improvement
     ]
     history = model.fit(
         train_ds,
