@@ -76,9 +76,11 @@ def plot_segmented_signal_on_ax(ax, signal, y, name=None, s=1, show_labels=True)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Amplitude")
     ax.set_title(f"{name} segmented")
+    plt.show()
 
 
 def plot_recording(rec_id, dataset, name, xl=None, yl=None, sa_fig: bool = False):
+    """Plot a single recording with color-coded segmentation. Optionally save to file."""
     data = dataset[rec_id]
     fig, ax = plt.subplots(figsize=(14, 4))
     plot_segmented_signal_on_ax(ax, data["signal"], data["y"])
@@ -87,7 +89,7 @@ def plot_recording(rec_id, dataset, name, xl=None, yl=None, sa_fig: bool = False
     if yl:
         ax.set_ylim(yl)
     ax.set_title(f"Recording {rec_id} {name}")
-    ax.legend(markerscale=6)
+    ax.legend(markerscale=6)  # enlarge legend markers for visibility
     fig.tight_layout()
     if sa_fig:
         path = FIGURES_DIR / f"fig_{rec_id}_{name}.png"
