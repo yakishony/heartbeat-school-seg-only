@@ -111,8 +111,8 @@ def claculate_BPM(pred):
     s2_indices = np.where(pred == 3)[0]
 
     # first sample of each S1 / S2 region (= one onset per heartbeat)
-    s1_onsets = _get_region_onsets(s1_indices)
-    s2_onsets = _get_region_onsets(s2_indices)
+    s1_onsets = _get_region_onsets(s1_indices) # func that exctracts the first sample of each contiguous region of S1
+    s2_onsets = _get_region_onsets(s2_indices) # func that exctracts the first sample of each contiguous region of S2
 
     # time (seconds) between consecutive heartbeats
     s1_intervals_sec = np.diff(s1_onsets) / RATE_DS
