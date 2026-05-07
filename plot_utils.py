@@ -23,7 +23,7 @@ LABEL_NAMES = {
 }
 
 # for application
-def plot_plain_signal_interactive(signal, sr, height=450, width=1100):
+def plot_plain_signal_interactive(signal, sr, height=450):
     """Plain amplitude-vs-time Plotly figure."""
     t = np.arange(len(signal)) / sr
     fig = go.Figure()
@@ -33,15 +33,15 @@ def plot_plain_signal_interactive(signal, sr, height=450, width=1100):
         name="signal",
     ))
     fig.update_layout(
-        height=height, width=width,
+        height=height,
         xaxis_title="Time (s)", yaxis_title="Amplitude",
-        margin=dict(l=50, r=20, t=40, b=40),
+        margin=dict(l=50, r=50, t=40, b=40),
         dragmode="zoom",
     )
     return fig
 
 # for application
-def plot_segmented_signal_interactive(signal, y, sr, height=450, width=1100):
+def plot_segmented_signal_interactive(signal, y, sr, height=450):
     """an interactive Plotly figure with color-coded segmentation."""
     t = np.arange(len(signal)) / sr
     fig = go.Figure()
@@ -55,10 +55,10 @@ def plot_segmented_signal_interactive(signal, y, sr, height=450, width=1100):
             name=LABEL_NAMES[label],
         ))
     fig.update_layout(
-        height=height, width=width,
+        height=height,
         xaxis_title="Time (s)", yaxis_title="Amplitude",
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        margin=dict(l=50, r=20, t=40, b=40),
+        margin=dict(l=50, r=50, t=40, b=40),
         dragmode="zoom",
     )
     return fig
